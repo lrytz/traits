@@ -71,3 +71,61 @@ object Components:
         case Loaded.Ok(value)    => view(value)
       }
     )
+
+  // ---- form primitives (editor UI) ----
+
+  val btnPrimary   = "bg-blue-600 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+  val btnSecondary = "border border-slate-300 text-slate-700 rounded-md px-4 py-2 text-sm hover:bg-slate-50"
+  val btnDanger    = "border border-rose-300 text-rose-700 rounded-md px-4 py-2 text-sm hover:bg-rose-50"
+
+  private val controlCls =
+    "w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+
+  def fieldLabel(text: String): HtmlElement =
+    div(cls := "text-xs font-medium uppercase tracking-wide text-slate-500 mb-1", text)
+
+  def field(labelText: String, control: HtmlElement): HtmlElement =
+    label(cls := "block", fieldLabel(labelText), control)
+
+  def textInput(v: Var[String], placeholderText: String = ""): HtmlElement =
+    input(
+      tpe         := "text",
+      placeholder := placeholderText,
+      cls         := controlCls,
+      controlled(value <-- v.signal, onInput.mapToValue --> v)
+    )
+
+  def passwordInput(v: Var[String], placeholderText: String, onEnter: () => Unit): HtmlElement =
+    input(
+      tpe         := "password",
+      placeholder := placeholderText,
+      cls         := controlCls,
+      controlled(value <-- v.signal, onInput.mapToValue --> v),
+      onKeyDown.filter(_.key == "Enter") --> { _ => onEnter() }
+    )
+
+  def multilineInput(v: Var[String], rowCount: Int = 4, placeholderText: String = ""): HtmlElement =
+    textArea(
+      rows        := rowCount,
+      placeholder := placeholderText,
+      cls         := s"$controlCls font-mono leading-relaxed",
+      controlled(value <-- v.signal, onInput.mapToValue --> v)
+    )
+
+  def checkboxInput(v: Var[Boolean]): HtmlElement =
+    input(
+      tpe := "checkbox",
+      cls := "h-4 w-4 rounded border-slate-300 align-middle",
+      controlled(checked <-- v.signal, onInput.mapToChecked --> v)
+    )
+
+  /** A single-select bound to a typed `Var[A]`. `key` must be a stable, unique string per option. */
+  def selectInput[A](current: Var[A], options: List[A], render: A => String, key: A => String): HtmlElement =
+    select(
+      cls := controlCls,
+      controlled(
+        value <-- current.signal.map(key),
+        onChange.mapToValue.map(s => options.find(o => key(o) == s).getOrElse(options.head)) --> current
+      ),
+      options.map(o => option(value := key(o), render(o)))
+    )

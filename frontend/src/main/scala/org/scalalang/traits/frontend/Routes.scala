@@ -6,7 +6,10 @@ import upickle.default.*
 enum Page derives ReadWriter:
   case Home
   case Changelog
+  case Login
+  case NewTopic
   case TopicView(slug: String)
+  case EditTopic(slug: String)
 
 object Routes:
 
@@ -23,13 +26,24 @@ object Routes:
 
   private val changelogRoute = staticRoute(Page.Changelog, List("changelog"))
 
+  private val loginRoute = staticRoute(Page.Login, List("login"))
+
+  private val newTopicRoute = staticRoute(Page.NewTopic, List("new"))
+
   private val topicRoute = Route[Page.TopicView, String](
     encode = _.slug,
     decode = Page.TopicView(_),
     pattern = root / "topics" / segment[String] / endOfSegments
   )
 
-  val allRoutes: List[Route[? <: Page, ?]] = List(homeRoute, changelogRoute, topicRoute)
+  private val editTopicRoute = Route[Page.EditTopic, String](
+    encode = _.slug,
+    decode = Page.EditTopic(_),
+    pattern = root / "topics" / segment[String] / "edit" / endOfSegments
+  )
+
+  val allRoutes: List[Route[? <: Page, ?]] =
+    List(homeRoute, changelogRoute, loginRoute, newTopicRoute, editTopicRoute, topicRoute)
 
   lazy val router: Router[Page] = new Router[Page](
     routes = allRoutes,

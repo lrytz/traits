@@ -1,7 +1,7 @@
 package org.scalalang.traits.frontend.pages
 
 import org.scalalang.traits.frontend.ui.{Components, Loaded}
-import org.scalalang.traits.frontend.{Api, Page}
+import org.scalalang.traits.frontend.{Api, Page, Session}
 import org.scalalang.traits.frontend.Api.given
 import org.scalalang.traits.shared.*
 import com.raquo.laminar.api.L.*
@@ -18,7 +18,14 @@ object TopicPage:
     }
 
     Components.container(
-      Components.pageLink(Page.Home, "← All features", "text-sm"),
+      div(
+        cls := "flex items-center justify-between",
+        Components.pageLink(Page.Home, "← All features", "text-sm"),
+        child <-- Session.signedIn.map {
+          case true  => Components.pageLink(Page.EditTopic(slug), "Edit", "text-sm font-medium")
+          case false => emptyNode
+        }
+      ),
       div(cls := "mt-3", Components.loaded(state.signal)(view))
     )
 
