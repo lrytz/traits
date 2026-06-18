@@ -14,3 +14,5 @@ frontend/dist/
 *.sqlite-wal
 traits-data/
 .playwright-mcp/
+.secret
+.env
