@@ -13,14 +13,14 @@ Everything lives in [`backend/deploy/`](../backend/deploy/): `Dockerfile`,
 - **Host**: `service@178.104.177.218`
 - **Compose dir**: `/home/service/compose/traits`
 - **Internal**: container listens on `8080`, published to `127.0.0.1:8090`
-- **Public URL**: a subdomain you choose (this doc uses `traits.muehlerytz.ch`)
+- **Public URL**: `https://traits.ddns.net` (DDNS hostname → the box's IP)
 
 Host and remote dir are hard-coded near the top of
 [`backend/deploy/deploy.sh`](../backend/deploy/deploy.sh) — edit there if the box moves.
 
 ```
 public internet
-   │  HTTPS  (traits.<domain>, Let's Encrypt cert via host nginx + certbot)
+   │  HTTPS  (traits.ddns.net, Let's Encrypt cert via host nginx + certbot)
    ▼
 host nginx ── proxy_pass http://127.0.0.1:8090 ──► traits-backend container
                                                     (tapir-netty-sync; /api, /docs, SPA)
@@ -36,8 +36,9 @@ the live site survive redeploys.
 
 ### 1. DNS
 
-Point `traits.muehlerytz.ch` (or your chosen subdomain) at `178.104.177.218`,
-with `:80`/`:443` reachable (needed for the Let's Encrypt HTTP-01 challenge).
+`traits.ddns.net` already points at `178.104.177.218` (keep the DDNS updater
+running so it stays pointed — Let's Encrypt re-checks on renewal). Make sure
+`:80`/`:443` are reachable (needed for the Let's Encrypt HTTP-01 challenge).
 
 ### 2. Push infra + build, from your laptop
 
@@ -73,14 +74,14 @@ password is all that gates create/edit/delete — share it only with reviewers.
 ### 4. Point nginx at traits + issue the cert
 
 ```sh
-sudo tee /etc/nginx/sites-available/traits.muehlerytz.ch > /dev/null <<'EOF'
+sudo tee /etc/nginx/sites-available/traits.ddns.net > /dev/null <<'EOF'
 # Rate-limit the login endpoint (10 req/min per IP).
 limit_req_zone $binary_remote_addr zone=traits_auth:10m rate=10r/m;
 
 server {
     listen 80;
     listen [::]:80;
-    server_name traits.muehlerytz.ch;
+    server_name traits.ddns.net;
 
     location = /api/auth/login {
         limit_req zone=traits_auth burst=10 nodelay;
@@ -105,16 +106,16 @@ server {
 }
 EOF
 
-sudo ln -s /etc/nginx/sites-available/traits.muehlerytz.ch \
-           /etc/nginx/sites-enabled/traits.muehlerytz.ch
+sudo ln -s /etc/nginx/sites-available/traits.ddns.net \
+           /etc/nginx/sites-enabled/traits.ddns.net
 sudo nginx -t && sudo systemctl reload nginx
-curl -s http://traits.muehlerytz.ch/api/health       # → {"status":"ok","topicCount":24}
+curl -s http://traits.ddns.net/api/health       # → {"status":"ok","topicCount":24}
 
-sudo certbot --nginx -d traits.muehlerytz.ch          # pick "2: Redirect"
-curl -s https://traits.muehlerytz.ch/api/health       # → {"status":"ok",...} over TLS
+sudo certbot --nginx -d traits.ddns.net          # pick "2: Redirect"
+curl -s https://traits.ddns.net/api/health       # → {"status":"ok",...} over TLS
 ```
 
-Open `https://traits.muehlerytz.ch` — the pipeline, detail, changelog, and the
+Open `https://traits.ddns.net` — the pipeline, detail, changelog, and the
 `/docs` API browser are all served by the one container.
 
 ## Day-to-day deploys
@@ -141,7 +142,7 @@ ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker comp
 
 ```sh
 ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose logs -f'
-curl https://traits.muehlerytz.ch/api/health     # topic count doubles as a readiness probe
+curl https://traits.ddns.net/api/health     # topic count doubles as a readiness probe
 ```
 
 json-file logging is capped at 10 MB × 5 files.
