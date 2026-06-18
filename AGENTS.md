@@ -33,8 +33,8 @@ Use `sbt` via the Bash tool.
 * `sbt compile` — main compile across modules
 * `sbt Test/compile` / `sbt test` — tests (none yet; add munit suites under
   `*/src/test/scala`)
-* `sbt backend/run` — start the API on `:8080` (sets `TRAITS_ENV=dev`, seeds the
-  DB on first run)
+* `sbt backend/run` — start the API on `:8080` (sets `TRAITS_ENV=dev`). It does
+  **not** seed or otherwise initialise the DB; the store is the source of truth.
 * `sbt frontend/fastLinkJS` — link Scala.js for vite
 
 If you keep an interactive session running (`sbt "~frontend/fastLinkJS"`),
@@ -110,7 +110,8 @@ Magnum notes:
 * The store is tiny and low-write; everything else (`Lane`, headline, version
   matrix) is derived in code from the parsed documents, not queried in SQL.
 
-To reset/re-seed: delete `traits-data/traits.sqlite*` and restart the backend.
+The DB is **not** re-seeded on start — deleting `traits-data/traits.sqlite*` leaves
+an empty store you'd repopulate through the editor UI or the HTTP API.
 
 ## Domain model (`shared/.../Domain.scala`)
 
@@ -199,7 +200,7 @@ when asked. Never amend/force-push. `frontend/package-lock.json` is tracked
 ## Running locally
 
 ```bash
-sbt backend/run                              # :8080, seeds DB on first run
+sbt backend/run                              # :8080 (no DB seeding)
 cd frontend && npm install && npm run dev    # :5173, proxies /api → :8080
 ```
 
@@ -210,11 +211,15 @@ explicitly. Others: `TRAITS_HTTP_PORT`, `TRAITS_DB_PATH`, `TRAITS_DB_POOL_SIZE`,
 `TRAITS_STATIC_FILES`. Prod build: `cd frontend && npm run build` → `dist/`,
 served by the backend as static files.
 
-## Seed data
+## Data
 
-`Seed.scala` inserts a few illustrative topics into an empty DB. **The facts are
-approximate** — versions, SIP states, and links are placeholders to make the UI
-tangible; correct them through the app.
+The store holds **real, curated data**: Scala language features introduced after
+3.0.0, across the lifecycle (idea → design → accepted → experimental → preview →
+stable). It is populated and edited through the editor UI or the HTTP API (see
+`docs/agent-curation.md`), **not** seeded by the app. Source material — the Scala
+blog, GitHub release notes, the SIP list, and the language reference — is listed
+in `DATA.md`. The SQLite file under `traits-data/` is the artifact to back up and
+deploy.
 
 ## Roadmap
 

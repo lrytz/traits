@@ -26,7 +26,6 @@ object Main extends OxApp.Simple:
     Db.migrate(ds)
 
     val topics = TopicService(ds)
-    if topics.count() == 0 then Seed.run(topics)
 
     val codec = SessionCodec(cfg.sessionSecret.getBytes(UTF_8))
     val auth  = AuthApi(codec, cfg.editorPassword, sessionTtl.getSeconds, cfg.cookieSecure)

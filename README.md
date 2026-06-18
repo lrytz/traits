@@ -74,7 +74,7 @@ drafting timeline entries for you to review. See
 Prerequisites: JDK 17+, sbt, Node.
 
 ```bash
-# 1. backend (serves /api on :8080, seeds the DB on first run)
+# 1. backend (serves /api on :8080)
 sbt backend/run
 
 # 2. frontend dev server (in another terminal)
@@ -90,12 +90,14 @@ jar must set them explicitly (fail-closed).
 For a production build, `cd frontend && npm run build` emits `frontend/dist`,
 which the backend serves as static files (`TRAITS_STATIC_FILES`).
 
-## Seed data
+## Data
 
-`Seed.scala` inserts a few illustrative topics (named tuples, better-fors,
-capture checking, union types) into an empty DB. **The facts are approximate** —
-versions, SIP states, and links are placeholders to make the UI tangible and
-should be corrected through the app.
+The store holds **real, curated data** — Scala language features introduced
+after 3.0.0, across the lifecycle from idea to generally available. It is
+populated and edited through the editor UI or the HTTP API (see
+[`docs/agent-curation.md`](docs/agent-curation.md)); the app does **not** seed or
+re-initialise the DB on start. Source material is listed in `DATA.md`. The SQLite
+file under `traits-data/` is the artifact to back up and deploy.
 
 ## Roadmap
 
