@@ -1,0 +1,15 @@
+target/
+.bsp/
+.bloop/
+.metals/
+.scala-build/
+.idea/
+.vscode/
+project/project/
+project/target/
+frontend/node_modules/
+frontend/dist/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+traits-data/

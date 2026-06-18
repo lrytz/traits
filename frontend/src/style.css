@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+/* Markdown-rendered content (Components.markdown). Only the tags marked/markdown can emit. */
+.rich-content h1 { font-size: 1.5rem;  line-height: 2rem;    font-weight: 600; margin: 0 0 0.5rem; }
+.rich-content h2 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+.rich-content h3 { font-size: 1.1rem;  line-height: 1.6rem;  font-weight: 600; margin: 0.75rem 0 0.5rem; }
+.rich-content p  { margin: 0 0 0.6rem; }
+.rich-content ul { list-style: disc;    margin: 0 0 0.6rem 1.4rem; }
+.rich-content ol { list-style: decimal; margin: 0 0 0.6rem 1.4rem; }
+.rich-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875em;
+  background: #f1f5f9;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+}
+.rich-content pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0 0 0.6rem;
+}
+.rich-content pre code { background: transparent; padding: 0; color: inherit; }
+.rich-content a { color: #2563eb; text-decoration: underline; }
+.rich-content > *:last-child { margin-bottom: 0; }
