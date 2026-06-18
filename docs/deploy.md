@@ -1,0 +1,147 @@
+# Deploying traits
+
+traits deploys to a Hetzner box as a single Docker container (SQLite is an
+in-process file, so there's no separate DB service). Another service on the box
+already owns `127.0.0.1:8080`, so traits publishes on **`127.0.0.1:8090`**, and
+host nginx proxies a subdomain to it.
+
+Everything lives in [`backend/deploy/`](../backend/deploy/): `Dockerfile`,
+`entrypoint.sh`, `docker-compose.yml`, `.env.example`, and `deploy.sh`.
+
+## Target
+
+- **Host**: `service@178.104.177.218`
+- **Compose dir**: `/home/service/compose/traits`
+- **Internal**: container listens on `8080`, published to `127.0.0.1:8090`
+- **Public URL**: a subdomain you choose (this doc uses `traits.muehlerytz.ch`)
+
+Host and remote dir are hard-coded near the top of
+[`backend/deploy/deploy.sh`](../backend/deploy/deploy.sh) — edit there if the box moves.
+
+```
+public internet
+   │  HTTPS  (traits.<domain>, Let's Encrypt cert via host nginx + certbot)
+   ▼
+host nginx ── proxy_pass http://127.0.0.1:8090 ──► traits-backend container
+                                                    (tapir-netty-sync; /api, /docs, SPA)
+                                                        └── traits-data volume (SQLite)
+```
+
+The SQLite store lives on the `traits-data` named volume. On the **first** boot
+the container seeds it from the dataset baked into the image (the curated DB
+snapshotted at deploy time); afterwards the volume persists, so edits made on
+the live site survive redeploys.
+
+## One-time setup
+
+### 1. DNS
+
+Point `traits.muehlerytz.ch` (or your chosen subdomain) at `178.104.177.218`,
+with `:80`/`:443` reachable (needed for the Let's Encrypt HTTP-01 challenge).
+
+### 2. Push infra + build, from your laptop
+
+```sh
+./backend/deploy/deploy.sh --infra
+```
+
+This builds the frontend + fat jar, snapshots the local DB as the seed, uploads
+everything, and runs `docker compose up -d --build`. **The first run will fail
+at container start because `.env` doesn't exist yet — that's expected**, fix it
+next.
+
+### 3. Write `.env` on the server
+
+```sh
+ssh service@178.104.177.218
+cd /home/service/compose/traits
+cp /dev/stdin .env <<'EOF'
+# paste backend/deploy/.env.example and fill in the blanks:
+TRAITS_ENV=prod
+TRAITS_SESSION_SECRET=<openssl rand -hex 32>
+TRAITS_EDITOR_PASSWORD=<a real password — NOT let-me-in>
+EOF
+chmod 600 .env
+
+sudo docker compose up -d
+sudo docker compose logs -f traits-backend     # watch startup; expect "seeding …" then the server line
+```
+
+`.env` is **never** overwritten by `deploy.sh`. Reads are public; the editor
+password is all that gates create/edit/delete — share it only with reviewers.
+
+### 4. Point nginx at traits + issue the cert
+
+```sh
+sudo tee /etc/nginx/sites-available/traits.muehlerytz.ch > /dev/null <<'EOF'
+# Rate-limit the login endpoint (10 req/min per IP).
+limit_req_zone $binary_remote_addr zone=traits_auth:10m rate=10r/m;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name traits.muehlerytz.ch;
+
+    location = /api/auth/login {
+        limit_req zone=traits_auth burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:8090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}
+EOF
+
+sudo ln -s /etc/nginx/sites-available/traits.muehlerytz.ch \
+           /etc/nginx/sites-enabled/traits.muehlerytz.ch
+sudo nginx -t && sudo systemctl reload nginx
+curl -s http://traits.muehlerytz.ch/api/health       # → {"status":"ok","topicCount":24}
+
+sudo certbot --nginx -d traits.muehlerytz.ch          # pick "2: Redirect"
+curl -s https://traits.muehlerytz.ch/api/health       # → {"status":"ok",...} over TLS
+```
+
+Open `https://traits.muehlerytz.ch` — the pipeline, detail, changelog, and the
+`/docs` API browser are all served by the one container.
+
+## Day-to-day deploys
+
+```sh
+./backend/deploy/deploy.sh          # rebuild jar + frontend + seed, restart container
+./backend/deploy/deploy.sh --infra  # also re-push Dockerfile / compose / entrypoint
+```
+
+Each run re-snapshots your **local** DB as the seed, but the seed only
+initialises an *empty* volume — once the live site has data, redeploys keep it.
+
+## Pushing a fresh dataset (wiping live data)
+
+If you want the live DB replaced with your current local one, drop the volume so
+the next deploy re-seeds:
+
+```sh
+ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose down -v'
+./backend/deploy/deploy.sh
+```
+
+## Logs & verifying
+
+```sh
+ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose logs -f'
+curl https://traits.muehlerytz.ch/api/health     # topic count doubles as a readiness probe
+```
+
+json-file logging is capped at 10 MB × 5 files.

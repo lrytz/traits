@@ -51,6 +51,32 @@ lazy val backend = project
     Compile / mainClass           := Some("org.scalalang.traits.backend.Main"),
     Compile / run / envVars       := Map("TRAITS_ENV" -> "dev"),
     Compile / run / javaOptions += "--enable-native-access=ALL-UNNAMED",
+    // Deployable fat jar (`sbt backend/assembly`). Stable name so the deploy
+    // script + Dockerfile need no templating. Merge strategy mirrors the
+    // netty/tapir service stack: concat service registries + netty version
+    // files, drop duplicate module-info / manifests.
+    assembly / assemblyJarName       := "traits.jar",
+    assembly / mainClass             := Some("org.scalalang.traits.backend.Main"),
+    assembly / assemblyMergeStrategy := {
+      // SwaggerUI (tapir-swagger-ui-bundle) finds its asset version by reading
+      // this webjar pom.properties off the classpath; the default strategy
+      // drops it and /docs then fails to initialise. Keep it.
+      case PathList("META-INF", "maven", "org.webjars", "swagger-ui", "pom.properties") =>
+        MergeStrategy.singleOrError
+      case PathList("META-INF", "services", _*)                           => MergeStrategy.concat
+      case PathList("META-INF", "MANIFEST.MF")                            => MergeStrategy.discard
+      case PathList("META-INF", "versions", _, "module-info.class")       => MergeStrategy.discard
+      case PathList("META-INF", "io.netty.versions.properties")           => MergeStrategy.concat
+      case PathList("META-INF", n) if n.toLowerCase.startsWith("notice")  => MergeStrategy.concat
+      case PathList("META-INF", n) if n.toLowerCase.startsWith("license") => MergeStrategy.concat
+      case PathList(n) if n.toLowerCase.startsWith("license")             => MergeStrategy.concat
+      case PathList(n) if n.toLowerCase.startsWith("notice")              => MergeStrategy.concat
+      case "module-info.class"                                            => MergeStrategy.discard
+      case "reference.conf"                                               => MergeStrategy.concat
+      case x                                                              =>
+        val old = (assembly / assemblyMergeStrategy).value
+        old(x)
+    },
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.tapir" %% "tapir-netty-server-sync"  % V.tapir,
       "com.softwaremill.sttp.tapir" %% "tapir-files"              % V.tapir,

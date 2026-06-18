@@ -1,0 +1,51 @@
+# Production docker-compose for traits on the Hetzner box.
+#
+# Single service (SQLite is an in-process file, no DB container). Another
+# service on the box already owns 127.0.0.1:8080, so traits publishes on
+# 127.0.0.1:8090 instead. Host nginx proxies https://<subdomain> → :8090.
+#
+# The deploy script scp's this file (plus Dockerfile + entrypoint.sh) once via
+# --infra, then re-uploads only traits.jar + frontend-dist + seed.sqlite on
+# subsequent deploys.
+
+services:
+  traits-backend:
+    container_name: traits-backend
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    image: traits-backend:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # In-container paths (override .env if the image layout ever changes).
+      TRAITS_STATIC_FILES: /app/static
+      TRAITS_DB_PATH: /app/data/traits.sqlite
+    ports:
+      - "127.0.0.1:8090:8080"
+    volumes:
+      # Persistent SQLite store. Survives container rebuilds; seeded once from
+      # the image's baked dataset (see entrypoint.sh).
+      - traits-data:/app/data
+    healthcheck:
+      # /api/health hits the DB (topic count) — liveness AND readiness.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  traits-data:
