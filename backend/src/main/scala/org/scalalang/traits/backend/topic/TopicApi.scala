@@ -1,16 +1,15 @@
 package org.scalalang.traits.backend.topic
 
-import org.scalalang.traits.backend.ai.EnrichService
 import org.scalalang.traits.backend.auth.AuthApi
 import org.scalalang.traits.shared.{ApiError, Endpoints}
 import sttp.shared.Identity
 import sttp.tapir.*
 import sttp.tapir.server.ServerEndpoint
 
-/** Public reads plus editor-gated writes/enrich. Read endpoints are open; write endpoints take the
+/** Public reads plus editor-gated writes. Read endpoints are open; write endpoints take the
   * session cookie (attached here, server-side) and run `auth.requireEditor` first.
   */
-class TopicApi(auth: AuthApi, topics: TopicService, enrich: EnrichService):
+class TopicApi(auth: AuthApi, topics: TopicService):
 
   val list: ServerEndpoint[Any, Identity] =
     Endpoints.listTopics.handleSuccess(_ => topics.list())
@@ -30,8 +29,6 @@ class TopicApi(auth: AuthApi, topics: TopicService, enrich: EnrichService):
     Endpoints.putTopic.in(cookie[Option[String]](Endpoints.SessionCookieName))
   private val deleteWithCookie =
     Endpoints.deleteTopic.in(cookie[Option[String]](Endpoints.SessionCookieName))
-  private val enrichWithCookie =
-    Endpoints.enrich.in(cookie[Option[String]](Endpoints.SessionCookieName))
 
   val put: ServerEndpoint[Any, Identity] =
     putWithCookie.handle { case (slug, input, cookie) =>
@@ -46,14 +43,5 @@ class TopicApi(auth: AuthApi, topics: TopicService, enrich: EnrichService):
       }
     }
 
-  val enrichEndpoint: ServerEndpoint[Any, Identity] =
-    enrichWithCookie.handle { case (slug, req, cookie) =>
-      auth.requireEditor(cookie).flatMap { _ =>
-        topics.get(slug) match
-          case Some(topic) => Right(enrich.enrich(topic, req))
-          case None        => Left(ApiError(ApiError.NotFound, s"Topic '$slug' not found"))
-      }
-    }
-
   val all: List[ServerEndpoint[Any, Identity]] =
-    List(list, get, search, changelog, put, delete, enrichEndpoint)
+    List(list, get, search, changelog, put, delete)

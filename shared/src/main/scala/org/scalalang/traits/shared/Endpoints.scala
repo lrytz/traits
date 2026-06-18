@@ -8,9 +8,9 @@ import sttp.tapir.json.upickle.*
 /** The HTTP contract, shared by the Netty server (which attaches logic + the session cookie) and
   * the Scala.js client (which derives a typed fetch client from these same values).
   *
-  * Read endpoints are public. Write / enrich endpoints are body-only here; the editor session
-  * cookie is attached server-side in `AuthApi`, so the browser client never has to name an
-  * unreadable `Set-Cookie`.
+  * Read endpoints are public. Write endpoints are body-only here; the editor session cookie is
+  * attached server-side in `AuthApi`, so the browser client never has to name an unreadable
+  * `Set-Cookie`.
   */
 object Endpoints:
 
@@ -90,11 +90,3 @@ object Endpoints:
       .in("topics" / path[String]("slug"))
       .errorOut(ApiError.jsonBody)
       .summary("Delete a topic")
-
-  val enrich: PublicEndpoint[(String, EnrichRequest), ApiError, EnrichResult, Any] =
-    base.post
-      .in("topics" / path[String]("slug") / "enrich")
-      .in(jsonBody[EnrichRequest])
-      .out(jsonBody[EnrichResult])
-      .errorOut(ApiError.jsonBody)
-      .summary("Re-read watched links with an LLM and propose updates (suggest-only)")

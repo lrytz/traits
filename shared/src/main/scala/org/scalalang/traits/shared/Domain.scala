@@ -218,19 +218,3 @@ case class TopicInput(
 case class Editor(name: String) derives ReadWriter
 
 case class LoginRequest(password: String) derives ReadWriter
-
-/** Request the AI re-read a topic's watched links (plus any `extraUrls`) and propose updates. */
-case class EnrichRequest(
-    instructions: Option[String] = None,
-    extraUrls: List[String] = Nil
-) derives ReadWriter
-
-/** AI proposal, surfaced for human review — never auto-applied. */
-case class EnrichResult(
-    notes: String, // the model's reasoning / caveats
-    suggestedSipState: Option[SipState],
-    suggestedAvailability: Option[Availability],
-    suggestedSections: List[Section],
-    suggestedTimeline: List[TimelineEntry],
-    discoveredLinks: List[Link]
-) derives ReadWriter

@@ -43,6 +43,3 @@ object Api:
 
   def deleteTopic(slug: String): Future[Either[ApiError, Unit]] =
     interp.toRequestThrowDecodeFailures(Endpoints.deleteTopic, baseUri = None).apply(slug).send(backend).map(_.body)
-
-  def enrich(slug: String, req: EnrichRequest): Future[Either[ApiError, EnrichResult]] =
-    interp.toRequestThrowDecodeFailures(Endpoints.enrich, baseUri = None).apply((slug, req)).send(backend).map(_.body)

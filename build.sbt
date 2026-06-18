@@ -52,8 +52,9 @@ lazy val backend = project
     Compile / run / envVars       := Map("TRAITS_ENV" -> "dev"),
     Compile / run / javaOptions += "--enable-native-access=ALL-UNNAMED",
     libraryDependencies ++= Seq(
-      "com.softwaremill.sttp.tapir" %% "tapir-netty-server-sync" % V.tapir,
-      "com.softwaremill.sttp.tapir" %% "tapir-files"             % V.tapir,
+      "com.softwaremill.sttp.tapir" %% "tapir-netty-server-sync"  % V.tapir,
+      "com.softwaremill.sttp.tapir" %% "tapir-files"              % V.tapir,
+      "com.softwaremill.sttp.tapir" %% "tapir-swagger-ui-bundle"  % V.tapir,
       "com.softwaremill.ox"         %% "core"                    % V.ox,
       "com.augustnagro"             %% "magnum"                  % V.magnum,
       "com.zaxxer"                   % "HikariCP"                % V.hikari,

@@ -10,7 +10,7 @@ import sttp.tapir.*
 import sttp.tapir.server.ServerEndpoint
 
 /** Shared-password auth. `login` checks the configured editor password and mints an HMAC-signed
-  * session cookie; `requireEditor` is the gate every write/enrich handler runs first.
+  * session cookie; `requireEditor` is the gate every write handler runs first.
   */
 class AuthApi(
     codec: SessionCodec,

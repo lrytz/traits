@@ -1,6 +1,5 @@
 package org.scalalang.traits.backend
 
-import org.scalalang.traits.backend.ai.{EnrichService, LlmClient, StubLlmClient}
 import org.scalalang.traits.backend.auth.{AuthApi, SessionCodec}
 import org.scalalang.traits.backend.topic.{TopicApi, TopicService}
 import org.scalalang.traits.shared.Endpoints
@@ -10,6 +9,7 @@ import sttp.tapir.*
 import sttp.tapir.files.{staticFilesGetServerEndpoint, FilesOptions}
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.netty.sync.NettySyncServer
+import sttp.tapir.swagger.bundle.SwaggerInterpreter
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Paths
@@ -31,12 +31,18 @@ object Main extends OxApp.Simple:
     val codec = SessionCodec(cfg.sessionSecret.getBytes(UTF_8))
     val auth  = AuthApi(codec, cfg.editorPassword, sessionTtl.getSeconds, cfg.cookieSecure)
 
-    val llm: LlmClient = StubLlmClient()
-    val enrich         = EnrichService(llm)
-    val topicApi       = TopicApi(auth, topics, enrich)
+    val topicApi = TopicApi(auth, topics)
 
     val health: ServerEndpoint[Any, Identity] =
       Endpoints.health.handleSuccess(_ => Endpoints.Health("ok", topics.count()))
+
+    val apiEndpoints: List[ServerEndpoint[Any, Identity]] =
+      List(health) ++ auth.all ++ topicApi.all
+
+    // Live OpenAPI + Swagger UI at /docs (spec at /docs/docs.yaml), kept in sync with the served
+    // endpoints. This is the contract external coding agents read to curate the data over HTTP.
+    val docs: List[ServerEndpoint[Any, Identity]] =
+      SwaggerInterpreter().fromServerEndpoints[Identity](apiEndpoints, "Traits API", "0.1.0")
 
     val staticDir = Paths.get(cfg.staticFilesPath).toAbsolutePath
     val staticFrontend: ServerEndpoint[Any, Identity] =
@@ -50,5 +56,5 @@ object Main extends OxApp.Simple:
     val _ = NettySyncServer()
       .host("0.0.0.0")
       .port(cfg.httpPort)
-      .addEndpoints(List(health) ++ auth.all ++ topicApi.all ++ List(staticFrontend))
+      .addEndpoints(apiEndpoints ++ docs ++ List(staticFrontend))
       .startAndWait()
