@@ -15,6 +15,10 @@ object Components:
   def container(mods: Mod[HtmlElement]*): HtmlElement =
     div(cls := "max-w-5xl mx-auto px-4 py-6", mods)
 
+  /** Wider variant for board/overview layouts that benefit from horizontal room. */
+  def containerWide(mods: Mod[HtmlElement]*): HtmlElement =
+    div(cls := "max-w-7xl mx-auto px-4 py-6", mods)
+
   def pageTitle(text: String): HtmlElement =
     h1(cls := "text-2xl font-semibold text-slate-900", text)
 
@@ -32,7 +36,7 @@ object Components:
 
   def laneBadge(lane: Lane): HtmlElement =
     span(
-      cls := s"inline-block text-xs font-medium px-2 py-0.5 rounded-full ${laneClasses(lane)}",
+      cls := s"inline-block whitespace-nowrap text-xs font-medium px-2 py-0.5 rounded-full ${laneClasses(lane)}",
       Lane.label(lane)
     )
 

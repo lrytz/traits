@@ -18,7 +18,7 @@ object PipelinePage:
       case Left(e)   => state.set(Loaded.Failed(e.message))
     }
 
-    Components.container(
+    Components.containerWide(
       div(
         cls := "flex flex-wrap items-end justify-between gap-3 mb-5",
         div(
@@ -52,13 +52,13 @@ object PipelinePage:
     val lanes =
       Lane.pipeline ++ (if topics.exists(_.lane == Lane.Closed) then List(Lane.Closed) else Nil)
     div(
-      cls := "flex gap-4 overflow-x-auto pb-4",
+      cls := "flex flex-col sm:flex-row gap-4 sm:overflow-x-auto pb-4",
       lanes.map(lane => column(lane, topics.filter(_.lane == lane)))
     )
 
   private def column(lane: Lane, items: List[FeatureSummary]): HtmlElement =
     div(
-      cls := "flex-shrink-0 w-64",
+      cls := "w-full sm:flex-1 sm:min-w-44",
       div(
         cls := "flex items-center gap-2 mb-2",
         Components.laneBadge(lane),
@@ -66,7 +66,7 @@ object PipelinePage:
       ),
       div(
         cls := "space-y-2",
-        if items.isEmpty then p(cls := "text-xs text-slate-300", "—")
+        if items.isEmpty then p(cls := "text-xs text-slate-300 pb-1", "—")
         else items.map(card)
       )
     )

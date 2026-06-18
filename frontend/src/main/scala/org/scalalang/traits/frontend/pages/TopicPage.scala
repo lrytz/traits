@@ -102,7 +102,7 @@ object TopicPage:
       )
     )
 
-  private def links(t: Topic): HtmlElement =
+  private def links(t: Topic): Node =
     if t.links.isEmpty then emptyNode
     else
       div(
@@ -121,7 +121,7 @@ object TopicPage:
         )
       )
 
-  private def timeline(t: Topic): HtmlElement =
+  private def timeline(t: Topic): Node =
     if t.timeline.isEmpty then emptyNode
     else
       div(

@@ -13,3 +13,4 @@ frontend/dist/
 *.sqlite-shm
 *.sqlite-wal
 traits-data/
+.playwright-mcp/
