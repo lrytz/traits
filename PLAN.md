@@ -56,14 +56,15 @@ contradicting the underlying facts. Same for the version/availability badges.
 ### 6. Links are typed and double as the AI's reading list
 
 Each `Link` has a kind (SIP/PR/issue/forum/doc) and a `watch` flag. They're shown
-to users *and* `watch = true` marks the set the AI re-reads on enrichment.
+to users *and* `watch = true` marks the set an agent re-reads when curating.
 
 ### 7. Humans curate; the AI only suggests
 
-The database is **authoritative and human-curated**. The AI never writes. On
-demand it re-reads watched links and returns a *suggestion* (summary, proposed
-SIP state, timeline entries) that an editor reviews and applies by hand. This
-keeps the committee in control and makes AI output reviewable as plain diffs.
+The database is **authoritative and human-curated**. The AI never writes
+unattended. A curator points a coding agent at the HTTP API; on demand it
+re-reads watched links and proposes changes (summary, SIP state, timeline
+entries) as visible writes a human reviews and approves. This keeps the
+committee in control and makes AI output reviewable as plain diffs.
 
 ### 8. Storage: one SQLite file, each topic a JSON document
 
@@ -93,11 +94,14 @@ HMAC-signed session cookie. The session carries an `editor` identity string, so
 GitHub OAuth with a committee allowlist (the handles are literally on the process
 page) can drop in later without reshaping the endpoints.
 
-### 11. AI behind a pluggable, suggest-only boundary
+### 11. AI curation lives outside the app
 
-The LLM sits behind a one-method `LlmClient` trait with a stub implementation, so
-any provider (Anthropic/OpenAI/local) wires in without touching the enrichment
-logic, and the app runs with no API key.
+Rather than bake an LLM into the server, the app exposes a live OpenAPI contract
+(Swagger UI at `/docs`) over its editor-gated HTTP API. Curators point a coding
+agent they already run — Claude Code, Claude Desktop, anything — at a running
+instance to update entries, re-read discussions, and create features. No API
+keys or LLM ops in the server, and curators use whatever agent and tools they
+prefer. See `docs/agent-curation.md`.
 
 ### 12. Name: **Traits**
 
@@ -118,20 +122,21 @@ Scala meaning without being a pun you must "get". `org.scalalang.traits`.
 
 ## Build status
 
-A first slice is implemented: the shared model, the full backend API (reads,
-shared-password auth, suggest-only enrichment stub), and read-only
-pipeline/detail/changelog views, seeded with illustrative data. Not yet
-compiled against the toolchain — expect minor `-Werror` fixes on first build.
-See `README.md` to run it and `AGENTS.md` for conventions.
+Implemented: the shared model, the full backend API (public reads,
+shared-password auth, editor-gated writes) with a live OpenAPI spec at `/docs`,
+the read-only pipeline/detail/changelog views, and the editor UI (login plus
+create/edit/delete). External-agent curation is documented in
+`docs/agent-curation.md`. See `README.md` to run it and `AGENTS.md` for
+conventions.
 
 ## Roadmap
 
-1. **Editor UI** — login + create/edit forms for topics, sections, links,
-   timeline (the backend writes already exist).
-2. **Real `LlmClient`** + a side-by-side review/accept panel for AI suggestions.
-3. **GitHub label sync** — read SIP PR labels directly to propose `SipState`.
-4. **Version matrix** view (feature × Scala version × flag).
-5. **Cross-topic references** — `[[slug]]` links with automatic backlinks.
+1. **Agent ergonomics** — a bearer-token / API-key auth path for headless
+   agents, and optionally an MCP server so agents that speak MCP (Claude
+   Desktop) can curate without shell access.
+2. **GitHub label sync** — read SIP PR labels directly to propose `SipState`.
+3. **Version matrix** view (feature × Scala version × flag).
+4. **Cross-topic references** — `[[slug]]` links with automatic backlinks.
 
 ## Deliberately deferred
 

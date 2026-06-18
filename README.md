@@ -13,19 +13,18 @@ document.
 
 ## Status
 
-This is a **first slice** — the foundation plus read-only views over seeded
-data. It has not yet been compiled against your toolchain; run
-`sbt -client compile` and we'll fix anything `-Werror` flags. What works:
-the pipeline view, feature detail, changelog, and the full backend API
-(including editor auth and the AI-enrichment stub). What's next: the editor
-UI (login + edit forms) and a real `LlmClient`.
+A working first version: the pipeline, feature detail, and changelog views,
+the full backend API (public reads + editor-gated writes) with a live OpenAPI
+spec at `/docs`, and the **editor UI** — sign in and create / edit / delete
+features. LLM-assisted curation is external: point a coding agent at the API
+(see [`docs/agent-curation.md`](docs/agent-curation.md)).
 
 ## Modules
 
 | Module     | Platform | What it holds                                                        |
 | ---------- | -------- | ------------------------------------------------------------------- |
 | `shared`   | JVM + JS | Domain model (`Topic`, `SipState`, `Lane`, …), tapir `Endpoints`    |
-| `backend`  | JVM      | Netty-sync server, SQLite/Magnum store, auth, AI enrichment         |
+| `backend`  | JVM      | Netty-sync server, SQLite/Magnum store, auth, OpenAPI docs          |
 | `frontend` | JS       | Laminar SPA: pipeline, detail, changelog                            |
 
 ## Data model
@@ -40,7 +39,7 @@ A **Topic** is the unit of tracking (a SIP is optional — not everything has on
 - the current **`availability`** = `(kind ∈ experimental|preview|stable,
   sinceVersion)`; earlier transitions live in the timeline, not as standing rows
 - typed **`links`** (SIP / PR / issue / forum / doc); `watch = true` marks the
-  ones the AI re-reads
+  ones an agent re-reads when curating
 - a dated **`timeline`** that feeds the global changelog
 
 The headline "where it stands" and the pipeline **`Lane`** are *derived* from
@@ -61,13 +60,14 @@ Public read; editor-gated writes. A single shared password
 session carries an `editor` identity string so per-user auth (e.g. GitHub OAuth
 with a committee allowlist) can drop in later without reshaping the endpoints.
 
-## AI enrichment
+## Curation by a coding agent
 
-`POST /api/topics/{slug}/enrich` re-reads a topic's `watch` links and returns an
-`EnrichResult` — a *suggestion* (summary, proposed SIP state, timeline entries)
-that an editor reviews and applies by hand. It never writes. The LLM is behind a
-one-method `LlmClient` trait; `StubLlmClient` returns a placeholder so the flow
-works without an API key. Wire a real client into `Main` to enable it.
+There's no LLM baked into the app. Instead, point a coding agent you already run
+(Claude Code, Claude Desktop, …) at the editor-gated HTTP API: it reads the live
+OpenAPI spec at `/docs`, signs in with the shared password, and updates entries
+through `PUT`/`DELETE` — re-reading linked discussions, advancing SIP state, and
+drafting timeline entries for you to review. See
+[`docs/agent-curation.md`](docs/agent-curation.md).
 
 ## Running it
 
@@ -99,8 +99,7 @@ should be corrected through the app.
 
 ## Roadmap
 
-1. Editor UI — login, create/edit forms for topics, sections, links, timeline.
-2. Real `LlmClient` + parse the model's reply into structured suggestions with a
-   side-by-side review/accept panel.
-3. GitHub label sync — read SIP PR labels directly to propose `SipState`.
-4. Version matrix view; cross-topic references (`[[slug]]`) with backlinks.
+1. Agent ergonomics — a bearer-token / API-key auth path for headless agents,
+   optionally an MCP server for non-shell agents (Claude Desktop).
+2. GitHub label sync — read SIP PR labels directly to propose `SipState`.
+3. Version matrix view; cross-topic references (`[[slug]]`) with backlinks.

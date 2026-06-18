@@ -20,7 +20,7 @@ not a normalized Postgres schema.
 | Module     | Platform | Package root                         | Holds                                              |
 | ---------- | -------- | ------------------------------------ | -------------------------------------------------- |
 | `shared`   | JVM + JS | `org.scalalang.traits.shared`        | Domain model, tapir `Endpoints`, `Schemas`, `ApiError` |
-| `backend`  | JVM      | `org.scalalang.traits.backend`       | Netty-sync server, SQLite/Magnum store, auth, AI   |
+| `backend`  | JVM      | `org.scalalang.traits.backend`       | Netty-sync server, SQLite/Magnum store, auth, OpenAPI docs |
 | `frontend` | JS       | `org.scalalang.traits.frontend`      | Laminar SPA: pipeline, detail, changelog           |
 
 `shared` is a pure cross-project; both sides depend on it so the HTTP shape
@@ -124,7 +124,7 @@ A **`Topic`** is the unit of tracking; a SIP is optional. Key points:
   only (experimental/preview/stable). Earlier transitions live in `timeline`,
   not as standing rows.
 * `links: List[Link]` typed (SIP/PR/issue/forum/doc); `watch = true` marks the
-  ones the AI re-reads.
+  ones a curation agent re-reads.
 * `timeline: List[TimelineEntry]` — dated milestones; the union across topics is
   the changelog.
 
@@ -144,22 +144,21 @@ type, add its `Schema` given to `Schemas`.
 
 ## Auth
 
-Public read; editor-gated writes/enrich. A single shared password
+Public read; editor-gated writes. A single shared password
 (`TRAITS_EDITOR_PASSWORD`) is exchanged at `POST /api/auth/login` for an
 HMAC-signed session cookie (`SessionCodec`, `traits_session`). `AuthApi.requireEditor`
 is the gate. The session carries an `editor` identity string, so swapping in
 GitHub OAuth (committee allowlist) later is localised to `AuthApi` + `login`.
 
-## AI enrichment
+## Curation by external agents
 
-`POST /api/topics/{slug}/enrich` re-reads a topic's `watch` links and returns an
-`EnrichResult` — a **suggestion** (summary, proposed SIP state, timeline entries)
-the editor reviews and applies by hand. **It never writes.** The LLM is behind
-the one-method `LlmClient` trait (`backend/.../ai/`); `StubLlmClient` returns a
-placeholder. To enable it: implement `LlmClient.complete` (a blocking HTTP call
-to Anthropic/OpenAI/local), construct it in `Main`, and have `EnrichService`
-parse the reply into structured fields. The GitHub-label → `SipState` mapping is
-the highest-value thing the AI can do reliably.
+There is no in-process LLM. Curation happens over the HTTP API: a coding agent
+(Claude Code, Claude Desktop, …) reads the live OpenAPI spec at `/docs` (served
+by `tapir-swagger-ui-bundle` from the actual endpoints, so it can't drift),
+signs in with the shared password, and updates topics through `PUT`/`DELETE`.
+The agent does the web-reading the old enrichment stub couldn't; humans still
+drive and approve each write. The full workflow — auth, shapes, the `SipState`
+encoding, worked curl examples — is in `docs/agent-curation.md`.
 
 ## Frontend conventions
 
@@ -219,8 +218,7 @@ tangible; correct them through the app.
 
 ## Roadmap
 
-1. **Editor UI** — login + create/edit forms for topics, sections, links,
-   timeline (backend already supports the writes).
-2. **Real `LlmClient`** + parse replies into a side-by-side review/accept panel.
-3. **GitHub label sync** — read SIP PR labels directly to propose `SipState`.
-4. **Version matrix** view; cross-topic references (`[[slug]]`) with backlinks.
+1. **Agent ergonomics** — a bearer-token / API-key auth path for headless
+   agents, optionally an MCP server for non-shell agents (Claude Desktop).
+2. **GitHub label sync** — read SIP PR labels directly to propose `SipState`.
+3. **Version matrix** view; cross-topic references (`[[slug]]`) with backlinks.
