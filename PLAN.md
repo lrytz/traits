@@ -79,6 +79,17 @@ SQLite (not Postgres) because the DB is tiny and low-write: one file, `cp`
 backups, no server, and plain Magnum `sql"…"` code. Migrating to
 Postgres later would be a config change, not a rewrite.
 
+Format changes split in two. Adding or dropping a field is **free** — upickle
+ignores unknown keys and fills absent ones from defaults, so stored documents
+keep parsing. Renaming an enum case is **breaking**: the case name *is* the wire
+format (`"CompletedShipped"`, or a `$type` tag for parametric cases), and an
+unrecognised one fails to parse. For those, the plan is a data version in
+`PRAGMA user_version`, checked at startup, applying ordered steps over
+**untyped** `ujson` — never over `Topic`, whose codec by definition can't read
+the old shape — followed by one pass to rebuild `search_text`. Steps are frozen
+once written and reference no shared types. Not Flyway: the schema is one table
+and doesn't change; what evolves is the document.
+
 ### 9. A proven, real-world stack
 
 Scala 3 + tapir (direct style, ox) + Magnum on the backend, Scala.js + Laminar +

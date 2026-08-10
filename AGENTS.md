@@ -105,8 +105,12 @@ Magnum notes:
 * SQLite stores JSON as plain `TEXT` — no `::jsonb` cast (that's Postgres).
 * `Db.migrate` is idempotent (`CREATE TABLE IF NOT EXISTS`) and sets WAL mode.
   `PRAGMA journal_mode=WAL` must run **outside** a transaction → it's in a
-  `connect` block, not `transact`. There's no migration tool yet; evolve the
-  schema with more idempotent statements, or add one when it gets real.
+  `connect` block, not `transact`. The schema is stable; what evolves is the
+  document. Adding or dropping a `Topic` field needs no migration (upickle
+  ignores unknown keys, defaults fill absent ones) — but **renaming an enum case
+  breaks every stored row**, since the case name is itself the wire format. That
+  case needs a versioned `ujson`-level step plus a `search_text` rebuild; see
+  PLAN.md §8.
 * The store is tiny and low-write; everything else (`Lane`, headline, version
   matrix) is derived in code from the parsed documents, not queried in SQL.
 
