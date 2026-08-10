@@ -16,3 +16,4 @@ traits-data/
 .playwright-mcp/
 .secret
 .env
+.traits-cookies
