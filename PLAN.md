@@ -1,161 +1,307 @@
-# Traits — plan & design decisions
+# Traits — design and plan
 
-This is the design record for **Traits**, a tracker for Scala language features
-as they move through the pipeline: from a pre-SIP idea, through the
-[SIP committee process](https://docs.scala-lang.org/sips/process-specification.html),
-to experimental → preview → generally available. It answers, for any feature:
-*where does it stand, in which Scala version, under which flag, and how did it
-get there?* It's public-facing but also a working tool for the SIP committee.
+**Traits** tracks notable changes to Scala across their whole life: from an idea
+or a pre-SIP discussion, through the
+[SIP process](https://docs.scala-lang.org/sips/process-specification.html), into
+the compiler as experimental → preview → stable, and eventually to deprecated
+and removed. For any change it answers *where does this stand, in which Scala
+version, and how do I use it?*
 
-## Decisions
+It is public-facing and also a working tool for the SIP committee and the
+compiler team. A first version exists as a proof of concept; this document
+describes the model we are building for real, and the work to get there.
 
-Each decision below was made deliberately during design; the rationale matters
-as much as the choice.
+---
 
-### 1. The unit of tracking is a loose "Topic", not a SIP
+## What we track
 
-Not everything has a SIP. A topic might be a pre-SIP idea, a feature that
-predates the process, or a cluster of work. So the entity is a **Topic** with an
-*optional* `Sip`. This keeps the tracker broader than the proposals repo.
+An entry is **one notable change to Scala** — a language feature, a library
+addition, or anything else users need to know about, such as raising the minimum
+required JDK. If a change has a SIP, the SIP is *part of* the entry, never a
+separate entry. A follow-up change with no SIP of its own is a note in the
+description.
 
-### 2. Availability is the *current* state; transitions live in the timeline
+Granularity is per *change*, not per proposal round. Java's JEP index shows the
+alternative and why we avoid it: a JEP is one round, so "Structured Concurrency"
+is spread across nine of them and no single page answers what state the feature
+is in.
 
-Availability is fundamentally a matrix (experimental in 3.x, preview in 3.y,
-stable in 3.z). But we don't maintain dense per-version rows. A topic stores only
-the **current furthest-along** `(kind, sinceVersion)` — e.g. "Preview since 3.8".
-When it moves to stable, you update that one field; the 3.7-experimental fact
-isn't repeated, it's just an earlier **timeline** entry. The timeline (dated
-milestones) is what the changelog renders and where the progression history
-lives.
+### What earns an entry
 
-### 3. SIP status = the closed set of legal label combinations
+Only significant changes belong here; everything else stays in the release
+notes. This line gets drawn repeatedly by different people, so it is written
+down — otherwise a reader can no longer take "not in Traits" to mean "not in
+Scala", which is most of the app's value.
 
-A SIP's position isn't one flat value — it's the `(stage, status,
-recommendation)` triple the `scala/improvement-proposals` GitHub labels encode,
-and only a fixed set of combinations is legal (per the process spec). So
-`SipState` is a **closed enum of exactly those legal states** (e.g.
-`DesignVoteRequested(Accept)`, `ImplementationWaiting`, `CompletedShipped`),
-with the four-stage grouping *derived*. Because these mirror the GitHub labels
-1:1, the AI can read a PR's labels and propose the exact `SipState` — the single
-most reliable thing it can do.
+| Change | Bar |
+| --- | --- |
+| Has a SIP | always include |
+| Standard library | went through [SLC](https://github.com/scala/scala3/blob/main/docs/_docs/contributing/procedures/contributing-to-stdlib.md) ⇒ include |
+| Compiler change, no SIP | *would someone reasonably ask "can I use X in Scala 3.N?"* |
 
-### 4. Content is freeform markdown sections
+Include: capture checking, raising the minimum JDK, removing a deprecated
+method, anything that changes what compiles. Exclude: crash fixes, performance
+work, error-message wording, `-Y` debug flags. Borderline cases — a new warning
+that breaks `-Werror` builds, inference changes — are settled informally by the
+people curating.
 
-A topic carries an ordered list of `(heading, markdown)` **sections** — Overview,
-History, Discussion summary, How to try it, whatever fits — not a fixed schema.
-Freeform is what the committee wanted; a named heading also gives the AI a
-specific target ("update the *Discussion summary* section"). Markdown is stored
-raw and rendered through `marked` + `DOMPurify` (public page → sanitise).
+Compiler, library and research changes are **not** distinguished in the data.
+The only real difference is which stages they reach: library changes never get
+`Preview`, research features never reach `Stable`. We simply don't assign those.
 
-### 5. "Where it stands" is derived, never stored
+---
 
-The headline status and the pipeline **Lane** are computed from availability +
-SIP state (availability wins; else SIP state; else idea). Storing them would risk
-contradicting the underlying facts. Same for the version/availability badges.
+## Lifecycle
 
-### 6. Links are typed and double as the AI's reading list
+An entry has two independent tracks. A research feature is experimental with no
+proposal; a completed SIP can sit with no implementation. Neither track
+outranks the other, and they are never merged into a single status.
 
-Each `Link` has a kind (SIP/PR/issue/forum/doc) and a `watch` flag. They're shown
-to users *and* `watch = true` marks the set an agent re-reads when curating.
+### Proposal track — the SIP
 
-### 7. Humans curate; the AI only suggests
+`SipState` is a closed enum of exactly the legal `(stage, status,
+recommendation)` combinations from the process specification, which mirror the
+GitHub labels on `scala/improvement-proposals` 1:1 — so a curating agent can
+read a PR's labels and derive the state directly. Only the *current* state is
+stored; the history lives in the timeline and in the PR itself.
 
-The database is **authoritative and human-curated**. The AI never writes
-unattended. A curator points a coding agent at the HTTP API; on demand it
-re-reads watched links and proposes changes (summary, SIP state, timeline
-entries) as visible writes a human reviews and approves. This keeps the
-committee in control and makes AI output reviewable as plain diffs.
+Rejected and withdrawn are terminal; we don't record which stage they happened
+at.
 
-### 8. Storage: one SQLite file, each topic a JSON document
+### Availability track — the implementation
 
-The data is small, document-shaped, read whole, and edited as a unit — the case
-where a JSON document beats a normalized schema. Each topic is the upickle-
-serialized `Topic` in a single `data` column, with `updated_at` and a
-denormalised `search_text` alongside for listing/search. The model can evolve
-(new section, new field) without a SQL migration, and the AI-rewrites-a-section
-flow is a whole-document write.
+A list of stages, each usually anchored to a Scala **minor** version (patch
+versions are not modelled):
 
-SQLite (not Postgres) because the DB is tiny and low-write: one file, `cp`
-backups, no server, and plain Magnum `sql"…"` code. Migrating to
-Postgres later would be a config change, not a rewrite.
+| Stage | Version | Carries forward |
+| --- | --- | --- |
+| `PullRequest` | none | n/a |
+| `Experimental` | yes | yes |
+| `Preview` | yes | yes |
+| `Stable` | yes | yes |
+| `Deprecated` | yes | yes |
+| `Removed` | yes | **no** |
 
-Format changes split in two. Adding or dropping a field is **free** — upickle
-ignores unknown keys and fills absent ones from defaults, so stored documents
-keep parsing. Renaming an enum case is **breaking**: the case name *is* the wire
-format (`"CompletedShipped"`, or a `$type` tag for parametric cases), and an
-unrecognised one fails to parse. For those, the plan is a data version in
-`PRAGMA user_version`, checked at startup, applying ordered steps over
-**untyped** `ujson` — never over `Topic`, whose codec by definition can't read
-the old shape — followed by one pass to rebuild `search_text`. Steps are frozen
-once written and reference no shared types. Not Flyway: the schema is one table
-and doesn't change; what evolves is the document.
+`PullRequest` is the only stage with no version — "just an idea" and "has an
+implementation in flight" are different things to a reader. A change that has
+merged but not yet shipped is simply an entry on a version that isn't released
+yet, so nothing needs rewriting when the release happens.
 
-### 9. A proven, real-world stack
+`Removed` is the one stage that does not carry forward: an entry removed in 3.11
+shows in 3.11 marked as removed, and is absent from 3.12 on.
 
-Scala 3 + tapir (direct style, ox) + Magnum on the backend, Scala.js + Laminar +
-Waypoint + Vite on the frontend, a shared module for the wire contract. This is
-a proven, real-world stack the author already runs; reusing its conventions
-(shared body-only endpoints, Repo/Service/Api triad, netty-sync) means little new
-to learn.
+### Backports
 
-### 10. Auth: shared password now, per-user later
+A backport is an availability entry with `backport = true`, legal only on
+`Stable`, `Deprecated` and `Removed`. It applies to its own version only and
+does not carry forward — a backport to 3.3 does not make the change available in
+3.4.
 
-Public read, editor-gated writes. A single shared password is exchanged for an
-HMAC-signed session cookie. The session carries an `editor` identity string, so
-GitHub OAuth with a committee allowlist (the handles are literally on the process
-page) can drop in later without reshaping the endpoints.
+The flag is not redundant with the version ordering. "Stable in 3.8, backported
+to 3.3" and "stable since 3.3" produce the identical entry list, but disagree
+about 3.4–3.7; nothing else in the data breaks the tie.
 
-### 11. AI curation lives outside the app
+Deciding *whether* to backport stays in the scala3 PR queue with its
+`backport:*` labels. We record only the outcome, and it is fine for the database
+to briefly lag a merged backport.
 
-Rather than bake an LLM into the server, the app exposes a live OpenAPI contract
-(Swagger UI at `/docs`) over its editor-gated HTTP API. Curators point a coding
-agent they already run — Claude Code, Claude Desktop, anything — at a running
-instance to update entries, re-read discussions, and create features. No API
-keys or LLM ops in the server, and curators use whatever agent and tools they
-prefer. See `docs/agent-curation.md`.
+### Ideas and archiving
 
-### 12. Name: **Traits**
+An **idea** is an entry with nothing else — no SIP, no availability. There is
+nothing to store; it is the empty case.
 
-Plain English (the characteristics of the language) that quietly carries the
-Scala meaning without being a pun you must "get". `org.scalalang.traits`.
+**Archived** is a flag that hides an entry from default listings. It covers
+discarded ideas and changes that are long gone. It is always a manual editorial
+act, never automatic on removal: removal is exactly when people go looking for
+something ("where did `X` go?").
 
-## Views
+---
 
-* **Pipeline (home)** — kanban columns by `Lane` (Idea → Design → Accepted →
-  Experimental → Preview → Stable, plus Closed), with a live text filter. The
-  "where does everything stand" glance.
-* **Feature detail** — full record: status, SIP, availability, freeform sections,
-  links, timeline.
-* **Changelog** — every dated milestone across all features, newest first; an
-  interactive version history.
-* **Search** — full-text over topics (currently a client filter + a `LIKE`
-  endpoint; can grow to FTS5).
+## Data model
 
-## Build status
+```
+Entry
+  slug, title, tagline
+  sections     : [ (heading, markdown) ]     # freeform, ordered
+  links        : [ Link ]
+  timeline     : [ (date, summary, url?) ]
+  tags         : [ String ]
+  archived     : Boolean
+  sip          : Option[Sip]                 # current state only
+  availability : [ Availability ]
 
-Implemented: the shared model, the full backend API (public reads,
-shared-password auth, editor-gated writes) with a live OpenAPI spec at `/docs`,
-the read-only pipeline/detail/changelog views, and the editor UI (login plus
-create/edit/delete). External-agent curation is documented in
-`docs/agent-curation.md`. See `README.md` to run it and `AGENTS.md` for
-conventions.
+Availability
+  stage    : PullRequest | Experimental | Preview | Stable | Deprecated | Removed
+  version  : Option[Version]     # absent only for PullRequest
+  backport : Boolean             # only on Stable | Deprecated | Removed
+  note     : Option[String]      # markdown: how to enable in this state
 
-## Roadmap
+Version(major, minor, lts: Boolean, released: Boolean,
+        releaseDate: Option[Date], releaseNotesUrl: Option[String])
+```
 
-1. **Agent ergonomics** — a bearer-token / API-key auth path for headless
-   agents, and optionally an MCP server so agents that speak MCP (Claude
-   Desktop) can curate without shell access.
-2. **GitHub label sync** — read SIP PR labels directly to propose `SipState`.
-3. **Version matrix** view (feature × Scala version × flag).
-4. **Cross-topic references** — `[[slug]]` links with automatic backlinks.
+Validation: `version` is absent exactly for `PullRequest`; at most one main-line
+entry per version; `backport` only on the three stages above.
 
-## Deliberately deferred
+**Content is freeform markdown sections** — Overview, History, Discussion
+summary, How to try it, whatever fits — not a fixed schema. A named heading also
+gives a curating agent a specific target ("update the *Discussion summary*").
+Markdown is stored raw and rendered through `marked` + `DOMPurify`.
 
-* **Structured votes / committee log** — decided to keep the DB simple: store
-  only the `SipState`; summarise discussions, decisions, and votes in freeform
-  text rather than modelling vote tallies.
-* **Per-version availability rows** — superseded by "current state + timeline".
-* **A migration tool** — idempotent `CREATE TABLE IF NOT EXISTS` is enough at
-  this size; add Flyway-equivalent only if the schema gets real.
-* **OAuth / per-user identity** — shared password is enough to start; the
-  `editor` field leaves the door open.
+**Links are typed** (SIP / PR / issue / forum / doc) and carry a `watch` flag:
+`watch = true` marks the set an agent re-reads when curating. PR links live here
+regardless of what stage the entry is in.
+
+**How to enable a feature is prose**, in the `note` on an availability entry —
+a language import while experimental, `-preview` while preview, nothing once
+stable. Gating mechanisms are not modelled as data.
+
+**Nothing derivable is stored.** The lane an entry occupies, its headline, and
+its status in any given version are all computed, so they cannot contradict the
+underlying facts.
+
+**Versions live in the database**, editable by admins in the web UI and by
+agents through the API. The release date is not decoration: it is what lets an
+entry's history interleave dated timeline events with version-anchored
+availability events.
+
+### Status in a version
+
+```
+statusIn(v) =
+  backports.find(_.version == v).map(_.stage)             # exact version only
+    orElse mainline.filter(_.version <= v).maxBy(_.version) match
+      case Removed at w if w < v => Absent
+      case entry                 => entry.stage
+    orElse Absent
+```
+
+Worked example — stable in 3.8, backported to 3.3, removed in 3.11:
+
+| Version | Status | Why |
+| --- | --- | --- |
+| 3.3 | Stable | backport, exact match |
+| 3.4–3.7 | Absent | backport doesn't carry; main line hasn't reached it |
+| 3.8–3.10 | Stable | main line, carried forward |
+| 3.11 | Removed | tombstone, shown distinctly |
+| 3.12+ | Absent | removal doesn't carry forward |
+
+### Timeline
+
+Dated events that are **not** stage transitions: SIP votes and meeting outcomes,
+when and where a proposal was first discussed, decisions that changed direction.
+For an idea with no availability entries, the timeline is its entire history.
+
+Transitions are not written here by hand — "became preview in 3.8" is
+`Preview@3.8` in prose, and two copies would eventually disagree. The UI merges
+explicit timeline events and events derived from availability entries into one
+history at render time.
+
+---
+
+## Views and API
+
+* **Pipeline (home)** — columns are availability stages, which every entry has a
+  position in: `Idea` (no availability at all) · `PullRequest` · `Experimental` ·
+  `Preview` · `Stable` · `Deprecated` · `Removed`. Computed for the latest
+  released version, with two carve-outs so in-flight work stays visible: entries
+  with no versioned availability always show, and entries whose only
+  availability is in an unreleased version show in that stage's column badged
+  with the version. Archived entries are hidden. Cards carry a SIP badge.
+* **Version picker** — the same board computed for any chosen version.
+* **SIP board** — a separate view, columns are SIP stages, only entries with a
+  SIP.
+* **Entry page** — the full record, including backports and the merged history.
+* **Search** — full-text across titles, taglines, tags and section bodies.
+
+The read API is public and documented by a live OpenAPI spec at `/docs`,
+generated from the endpoints so it cannot drift. It exposes entries, search, and
+the version registry, including version-scoped status. API stability is not
+guaranteed yet; consistency and cleanliness come first.
+
+---
+
+## Architecture
+
+**Stack.** Scala 3 + tapir (direct style, ox) + Magnum on the backend, Scala.js +
+Laminar + Waypoint + Vite on the frontend, a shared module holding the domain
+model and the tapir endpoint definitions so the wire contract is written once.
+
+**Storage: one SQLite file, each entry a JSON document.** The data is small,
+document-shaped, read whole and edited as a unit — the case where a JSON
+document beats a normalised schema. One table holds the serialised entry in a
+`data` column plus `updated_at` and a denormalised `search_text` blob. The same
+upickle codec serves the wire and the store, so there is no translation layer.
+SQLite because the database is tiny and low-write: one file, `cp` backups, no
+server. Moving to Postgres later would be a configuration change, not a rewrite.
+
+*Evolving the stored format:* adding or dropping a field is free — unknown keys
+are ignored and absent ones fall back to defaults. Renaming an enum case is not:
+the case name is the stored wire format. That needs a data version in
+`PRAGMA user_version`, checked at startup, applying ordered steps over untyped
+`ujson` — never over the typed model, whose codec by definition cannot read the
+old shape — followed by a pass to rebuild `search_text`.
+
+**Auth.** Public read, editor-gated writes. A shared password is exchanged for
+an HMAC-signed session cookie. The session carries an `editor` identity string,
+so per-user auth (GitHub OAuth against a committee allowlist) can drop in later
+without reshaping the endpoints.
+
+**Curation is by an external agent, and humans approve.** There is no LLM in the
+server. Curators point a coding agent they already run at the editor-gated HTTP
+API; it re-reads watched links, proposes updated entries, and every write is a
+visible change a human approves. No API keys or LLM ops in the app, and curators
+use whatever tools they prefer. See [`docs/agent-curation.md`](docs/agent-curation.md).
+
+**Name.** Plain English — the characteristics of the language — quietly carrying
+the Scala meaning without being a pun you have to get. `org.scalalang.traits`.
+
+---
+
+## Scope
+
+Every other tool in this space is a work queue keyed by pull request. Traits is a
+durable index keyed by the change itself. That is the gap it fills, and the
+reason it neither replaces nor is replaced by them.
+
+| Tool | Relationship |
+| --- | --- |
+| SIP PR queue and labels | source of truth for SIP state; we mirror the current state |
+| scala3 PR queue and labels | stays as-is; we do not sync or duplicate it |
+| GitHub projects (LTS, 3.Next) | release planning, stays |
+| Milestones | reference for the version registry |
+| org project 4, "the evolution of Scala 3" | **replaced by this** |
+| Michal's feature spreadsheet | **replaced by this** |
+| Release notes | complementary: they cover everything, we cover the significant |
+
+Data sources for curation are listed in [`DATA.md`](DATA.md).
+
+### Not doing
+
+Kind, route or surface fields · gating taxonomy · `-source` and `-Y` levels ·
+deprecation planning (planned removals, replacements, migration notes) ·
+structured links between entries · backport workflow states · patch versions ·
+structured vote tallies — discussions and decisions are summarised in prose ·
+tracking bug fixes or performance work · replacing any GitHub workflow.
+
+---
+
+## Plan of work
+
+1. **Model.** The types above, `statusIn` with the removal exception, and the
+   validation rules, all with tests. Pure `shared` module work — no storage or
+   UI. This is the piece worth getting right; the rest is mechanical.
+2. **Version registry.** New entity, admin UI and API, seeded from scala3
+   milestones and releases. Blocks every version-scoped view.
+3. **Views.** Version picker first, since it proves the computation, then the
+   SIP board, then entry pages.
+4. **Curation and data.** Write the inclusion bar and the
+   timeline-vs-availability rule into the curation guide, then enter data from
+   the sources in `DATA.md` plus the spreadsheet and org project 4. The data
+   starts over from scratch. This is the long pole and it is human work.
+5. **API.** Version registry and version-scoped queries, public.
+
+[`docs/agent-curation.md`](docs/agent-curation.md) is the contract external
+agents follow, so it has to be updated alongside step 1 rather than after it.
+[`README.md`](README.md) and [`AGENTS.md`](AGENTS.md) also describe the current
+model and need the same treatment.
