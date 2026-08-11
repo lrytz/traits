@@ -72,22 +72,17 @@ at.
 A list of stages, each usually anchored to a Scala **minor** version (patch
 versions are not modelled):
 
-| Stage | Version | Carries forward |
-| --- | --- | --- |
-| `PullRequest` | none | n/a |
-| `Experimental` | yes | yes |
-| `Preview` | yes | yes |
-| `Stable` | yes | yes |
-| `Deprecated` | yes | yes |
-| `Removed` | yes | **no** |
+`PullRequest` · `Experimental` · `Preview` · `Stable` · `Deprecated` ·
+`Removed`.
+
+Every stage **carries forward**: a change that went stable in 3.8 is still
+stable in 3.9, and one removed in 3.11 stays removed thereafter. Only the next
+entry on the main line supersedes it.
 
 `PullRequest` is the only stage with no version — "just an idea" and "has an
 implementation in flight" are different things to a reader. A change that has
 merged but not yet shipped is simply an entry on a version that isn't released
 yet, so nothing needs rewriting when the release happens.
-
-`Removed` is the one stage that does not carry forward: an entry removed in 3.11
-shows in 3.11 marked as removed, and is absent from 3.12 on.
 
 ### Backports
 
@@ -166,24 +161,29 @@ availability events.
 
 ### Status in a version
 
+Returns the availability entry in effect, not just its stage — the entry's own
+version is what lets the UI say "stable *since 3.8*" while looking at 3.10.
+
 ```
-statusIn(v) =
-  backports.find(_.version == v).map(_.stage)             # exact version only
-    orElse mainline.filter(_.version <= v).maxBy(_.version) match
-      case Removed at w if w < v => Absent
-      case entry                 => entry.stage
-    orElse Absent
+statusIn(v) : Option[Availability] =
+  backports.find(_.version == v)                    # exact version only
+    orElse mainline.filter(_.version <= v).maxByOption(_.version)
 ```
 
 Worked example — stable in 3.8, backported to 3.3, removed in 3.11:
 
 | Version | Status | Why |
 | --- | --- | --- |
-| 3.3 | Stable | backport, exact match |
-| 3.4–3.7 | Absent | backport doesn't carry; main line hasn't reached it |
-| 3.8–3.10 | Stable | main line, carried forward |
-| 3.11 | Removed | tombstone, shown distinctly |
-| 3.12+ | Absent | removal doesn't carry forward |
+| 3.3 | Stable since 3.3 | backport, exact match |
+| 3.4–3.7 | — | backport doesn't carry; main line hasn't reached it |
+| 3.8–3.10 | Stable since 3.8 | main line, carried forward |
+| 3.11 | Removed in 3.11 | |
+| 3.12+ | Removed in 3.11 | carried forward, but hidden from the board (below) |
+
+A removed change stays removed, so the per-version board would keep listing it
+forever. The board therefore shows a `Removed` result only in the version where
+it happened — `entry.version == v` — and omits it after that. Entry pages and
+search are unaffected: the change still exists and is still findable.
 
 ### Timeline
 
@@ -287,7 +287,7 @@ tracking bug fixes or performance work · replacing any GitHub workflow.
 
 ## Plan of work
 
-1. **Model.** The types above, `statusIn` with the removal exception, and the
+1. **Model.** The types above, `statusIn`, and the
    validation rules, all with tests. Pure `shared` module work — no storage or
    UI. This is the piece worth getting right; the rest is mechanical.
 2. **Version registry.** New entity, admin UI and API, seeded from scala3
