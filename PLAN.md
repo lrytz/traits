@@ -287,9 +287,11 @@ tracking bug fixes or performance work · replacing any GitHub workflow.
 
 ## Plan of work
 
-1. **Model.** The types above, `statusIn`, and the
-   validation rules, all with tests. Pure `shared` module work — no storage or
-   UI. This is the piece worth getting right; the rest is mechanical.
+0. **Review this document** with the compiler team and the SIP committee,
+   including the owners of the two tools it proposes to replace.
+1. **Model.** The types above, `statusIn`, and the validation rules, all with
+   tests. Pure `shared` module work — no storage or UI. This is the piece worth
+   getting right; the rest is mechanical.
 2. **Version registry.** New entity, admin UI and API, seeded from scala3
    milestones and releases. Blocks every version-scoped view.
 3. **Views.** Version picker first, since it proves the computation, then the
