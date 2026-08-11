@@ -28,30 +28,21 @@ is in.
 
 ### What earns an entry
 
-Traits tracks the **progress of features**. It is not a second copy of the
-release notes, which remain the complete record of what changed in each version.
-If a change's whole story is "it happened in 3.9", the release notes have
-already told it.
+Traits tracks the **progress of features**, and is not a second copy of the
+release notes — if a change's whole story is "it happened in 3.9", the release
+notes have already told it. The test: **would someone look this up by name, long
+after it shipped?** A SIP always qualifies; everything else has to pass the
+test, including
+[SLC](https://github.com/scala/scala3/blob/main/docs/_docs/contributing/procedures/contributing-to-stdlib.md)-approved
+library changes.
 
-The test: **would someone look this up by name, long after it shipped?**
+Include: capture checking, named tuples, `into`, raising the minimum required
+JDK. Exclude: crash fixes, performance work, error-message wording, inference
+tweaks, `-Y` flags. Sunsetting a whole mechanism is an entry; retiring one
+deprecated method is a release note.
 
-| Change | Bar |
-| --- | --- |
-| Has a SIP | always |
-| Standard library | [SLC](https://github.com/scala/scala3/blob/main/docs/_docs/contributing/procedures/contributing-to-stdlib.md) approval makes it eligible; the test still applies |
-| Anything else | the test |
-
-Include: capture checking, named tuples, `into` conversions, raising the minimum
-required JDK. Exclude: crash fixes, performance work, error-message wording,
-inference tweaks, `-Y` debug flags, and retiring an individual deprecated
-method. Sunsetting a whole mechanism is an entry; removing one method is a
-release note.
-
-The bar is deliberately high, and it is written down because different people
-apply it over years. Set too low, the database becomes a worse-maintained
-duplicate of the release notes; held high, "not in Traits" reliably means "not a
-tracked feature". Borderline calls are settled informally by the people
-curating.
+Keep the bar high — set too low, this becomes a worse-maintained duplicate of
+the release notes. Borderline calls are settled informally by the curators.
 
 Compiler, library and research changes are **not** distinguished in the data.
 The only real difference is which stages they reach: library changes never get
