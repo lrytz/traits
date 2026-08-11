@@ -9,6 +9,9 @@ proposes the writes.**
 Pick one of the two setups below, then hand your agent this file. Everything
 after the setup sections applies to both.
 
+> This documents the API as it runs today. The data model is being rebuilt —
+> see [`PLAN.md`](../PLAN.md) — which will change the shapes below.
+
 ## What the agent needs
 
 This file, plus the live OpenAPI 3.1 spec — generated from the actual endpoints,

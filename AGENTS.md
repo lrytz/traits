@@ -1,19 +1,18 @@
 # traits — agent instructions
 
-`traits` tracks Scala language features through their lifecycle — from a
-pre-SIP idea, through the [SIP committee process](https://docs.scala-lang.org/sips/process-specification.html),
-to experimental → preview → generally available. Public read, committee-edited.
+`traits` tracks notable changes to Scala through their lifecycle — from an idea,
+through the [SIP process](https://docs.scala-lang.org/sips/process-specification.html),
+to experimental → preview → stable → removed. Public read, committee-edited.
 
 The stack and conventions are deliberate: Scala 3 + tapir (direct style, ox) on
-the backend,
-Scala.js + Laminar on the frontend, a shared module for the wire contract. When
-in doubt about a pattern, follow the existing code. The one big difference:
-storage is a single **SQLite** file holding each feature as a **JSON document**,
-not a normalized Postgres schema.
+the backend, Scala.js + Laminar on the frontend, a shared module for the wire
+contract. When in doubt about a pattern, follow the existing code. The one big
+difference: storage is a single **SQLite** file holding each entry as a **JSON
+document**, not a normalized Postgres schema.
 
-> Status: this is an early scaffold. It has **not yet been compiled** against the
-> toolchain — the first `sbt compile` will likely surface a few `-Werror` nits
-> (unused imports, value-discard). Fix them; don't suppress.
+> **This file describes the code as it is.** [`PLAN.md`](PLAN.md) describes the
+> model we are moving to, which changes the domain types, the views, and the
+> curation API. Read it before designing anything; read this before editing.
 
 ## Modules
 
@@ -119,6 +118,10 @@ an empty store you'd repopulate through the editor UI or the HTTP API.
 
 ## Domain model (`shared/.../Domain.scala`)
 
+This is the section [`PLAN.md`](PLAN.md) changes most — availability becomes a
+list of versioned stages rather than a single current state. What follows is the
+shipped model.
+
 A **`Topic`** is the unit of tracking; a SIP is optional. Key points:
 
 * `sections: List[Section]` — freeform `(heading, markdown)`, rendered in order.
@@ -217,17 +220,8 @@ served by the backend as static files.
 
 ## Data
 
-The store holds **real, curated data**: Scala language features introduced after
-3.0.0, across the lifecycle (idea → design → accepted → experimental → preview →
-stable). It is populated and edited through the editor UI or the HTTP API (see
-`docs/agent-curation.md`), **not** seeded by the app. Source material — the Scala
-blog, GitHub release notes, the SIP list, and the language reference — is listed
-in `DATA.md`. The SQLite file under `traits-data/` is the artifact to back up and
-deploy.
-
-## Roadmap
-
-1. **Agent ergonomics** — a bearer-token / API-key auth path for headless
-   agents, optionally an MCP server for non-shell agents (Claude Desktop).
-2. **GitHub label sync** — read SIP PR labels directly to propose `SipState`.
-3. **Version matrix** view; cross-topic references (`[[slug]]`) with backlinks.
+The store holds real, curated data. It is never seeded by the app: deleting
+`traits-data/traits.sqlite*` leaves an empty store, and the SQLite file is the
+artifact to back up and deploy. Entries are written through the editor UI or the
+HTTP API ([`docs/agent-curation.md`](docs/agent-curation.md)); the sources they
+are curated from are listed in [`DATA.md`](DATA.md).
