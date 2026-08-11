@@ -10,9 +10,9 @@ contract. When in doubt about a pattern, follow the existing code. The one big
 difference: storage is a single **SQLite** file holding each entry as a **JSON
 document**, not a normalized Postgres schema.
 
-> **This file describes the code as it is.** [`PLAN.md`](PLAN.md) describes the
-> model we are moving to, which changes the domain types, the views, and the
-> curation API. Read it before designing anything; read this before editing.
+> **This file describes the code; [`PLAN.md`](PLAN.md) specifies the design it
+> implements** — what earns an entry, the lifecycle, the model semantics. Read
+> the plan before changing the domain; read this before editing anything.
 
 ## Modules
 
@@ -20,7 +20,7 @@ document**, not a normalized Postgres schema.
 | ---------- | -------- | ------------------------------------ | -------------------------------------------------- |
 | `shared`   | JVM + JS | `org.scalalang.traits.shared`        | Domain model, tapir `Endpoints`, `Schemas`, `ApiError` |
 | `backend`  | JVM      | `org.scalalang.traits.backend`       | Netty-sync server, SQLite/Magnum store, auth, OpenAPI docs |
-| `frontend` | JS       | `org.scalalang.traits.frontend`      | Laminar SPA: pipeline, detail, changelog           |
+| `frontend` | JS       | `org.scalalang.traits.frontend`      | Laminar SPA: board, SIP board, entry, versions, editor |
 
 `shared` is a pure cross-project; both sides depend on it so the HTTP shape
 can't drift.
@@ -76,24 +76,26 @@ suits Magnum's blocking JDBC.
 1. Add the `val` to `shared/.../Endpoints.scala` (body-only).
 2. Wire server logic in the relevant `*Api.scala`. For an editor-gated write,
    add `.in(cookie[Option[String]](Endpoints.SessionCookieName))` and run
-   `auth.requireEditor(cookie)` first (see `TopicApi.put`).
+   `auth.requireEditor(cookie)` first (see `EntryApi.put`).
 3. Add it to that class's `all` list (already aggregated in `Main`).
 4. Add a typed wrapper to `frontend/.../Api.scala`.
 
 ## Storage (SQLite JSON document)
 
-One table, `topic` (`backend/.../Db.scala`):
+Two tables (`backend/.../Db.scala`):
 
 ```
-slug TEXT PK | updated_at TEXT | search_text TEXT | data TEXT(JSON)
+entry:   slug TEXT PK | updated_at TEXT | search_text TEXT | data TEXT(JSON)
+version: major INT + minor INT PK | data TEXT(JSON)
 ```
 
-* `data` is the whole `Topic` serialized with upickle. The **same upickle codec
-  serves the wire and the store** — no row-class translation layer.
+* `data` is the whole `Entry` / `Version` serialized with upickle. The **same
+  upickle codec serves the wire and the store** — no row-class translation layer.
+  `version` keys on real `major`/`minor` columns so the natural order is SQL.
 * `search_text` is a denormalised lowercase blob (title + tagline + tags +
   section bodies) recomputed on every write, for `LIKE` search.
-* Reads return `data` as a `String`; `TopicService.parse` does `read[Topic](_)`.
-  Writes do `write(topic)` and upsert.
+* Reads return `data` as a `String`; `EntryService.parse` does `read[Entry](_)`.
+  Writes do `write(entry)` and upsert.
 
 Magnum notes:
 
@@ -105,47 +107,49 @@ Magnum notes:
 * `Db.migrate` is idempotent (`CREATE TABLE IF NOT EXISTS`) and sets WAL mode.
   `PRAGMA journal_mode=WAL` must run **outside** a transaction → it's in a
   `connect` block, not `transact`. The schema is stable; what evolves is the
-  document. Adding or dropping a `Topic` field needs no migration (upickle
+  document. Adding or dropping an `Entry` field needs no migration (upickle
   ignores unknown keys, defaults fill absent ones) — but **renaming an enum case
   breaks every stored row**, since the case name is itself the wire format. That
   case needs a versioned `ujson`-level step plus a `search_text` rebuild; see
-  PLAN.md §8.
-* The store is tiny and low-write; everything else (`Lane`, headline, version
-  matrix) is derived in code from the parsed documents, not queried in SQL.
+  PLAN.md (Architecture → evolving the stored format).
+* The store is tiny and low-write; everything else (board placement, status in
+  a version) is derived in code from the parsed documents, not queried in SQL.
 
 The DB is **not** re-seeded on start — deleting `traits-data/traits.sqlite*` leaves
 an empty store you'd repopulate through the editor UI or the HTTP API.
 
 ## Domain model (`shared/.../Domain.scala`)
 
-This is the section [`PLAN.md`](PLAN.md) changes most — availability becomes a
-list of versioned stages rather than a single current state. What follows is the
-shipped model.
+An **`Entry`** is one notable change to Scala; the semantics are specified in
+[`PLAN.md`](PLAN.md). Key points:
 
-A **`Topic`** is the unit of tracking; a SIP is optional. Key points:
-
-* `sections: List[Section]` — freeform `(heading, markdown)`, rendered in order.
-* `sip: Option[Sip]` whose `state: SipState` is the **closed set of legal
-  `(stage, status, recommendation)` combinations** from the process spec —
-  these mirror the GitHub labels on `scala/improvement-proposals`.
-* `availability: Option[Availability]` = the **current** `(kind, sinceVersion)`
-  only (experimental/preview/stable). Earlier transitions live in `timeline`,
-  not as standing rows.
-* `links: List[Link]` typed (SIP/PR/issue/forum/doc); `watch = true` marks the
-  ones a curation agent re-reads.
-* `timeline: List[TimelineEntry]` — dated milestones; the union across topics is
-  the changelog.
-
-**`Topic.lane` and `Topic.headline` are derived**, never stored or trusted from
-the client — availability wins, else SIP state, else "idea". `FeatureSummary`
-(list/pipeline projection) and `ChangelogEntry` are computed from `Topic`. If you
-change the lifecycle rules, change the derivation in `Domain.scala` only.
+* Two independent tracks. `sip: Option[Sip]` holds only the **current**
+  `state: SipState` — the closed set of legal `(stage, status, recommendation)`
+  combinations from the process spec, mirroring the GitHub labels on
+  `scala/improvement-proposals`. `availability: List[Availability]` is the whole
+  track: one `(stage, version, backport, note)` row per stage reached, where
+  main-line rows carry forward and backports apply to their version only.
+* `VersionId(major, minor)` is a Scala minor version, serialized as `"3.8"`
+  everywhere (JSON, paths, store). The registry entity `Version` adds
+  lts/released/releaseDate and lives in its own table.
+* **Everything derivable is computed, never stored**: `Availability.statusIn`
+  (the entry in effect for a version), `Board.cell` (board placement, including
+  hidden-after-removal and the unreleased-upcoming carve-outs), and
+  `Availability.validate` (the rules `EntryApi.put` enforces with a `400`). If
+  you change lifecycle rules, change `Domain.scala` — the tests in
+  `shared/src/test` pin the semantics, including PLAN.md's worked example.
+* `sections` (freeform markdown), typed `links` with the `watch` flag, and
+  `timeline` (dated non-transition events) round out the document; `archived`
+  hides an entry from the boards. `EntrySummary` is the list projection — it
+  keeps `sip` and `availability` so boards are computable client-side.
 
 upickle: every domain type uses `derives ReadWriter`, including enums (parameter-
-ized cases like `SipState.DesignVoteRequested(Recommendation)` are supported).
+ized cases like `SipState.DesignVoteRequested(Recommendation)` are supported);
+`VersionId` has a custom string codec.
 
-tapir schemas: field-less enums need explicit string-based schemas and the
-parameterized `SipState` needs `Schema.derived` — all in `shared/.../Schemas.scala`.
+tapir schemas: field-less enums need explicit string-based schemas, the
+parameterized `SipState` needs `Schema.derived`, and `VersionId` has a string
+schema plus a `PlainCodec` for `path[VersionId]` — all in `shared/.../Schemas.scala`.
 `Endpoints` does `import Schemas.given` + `import sttp.tapir.generic.auto.*` so
 case-class schemas derive on top of them. When you add an enum used in a body
 type, add its `Schema` given to `Schemas`.
@@ -163,7 +167,7 @@ GitHub OAuth (committee allowlist) later is localised to `AuthApi` + `login`.
 There is no in-process LLM. Curation happens over the HTTP API: a coding agent
 (Claude Code, Claude Desktop, …) reads the live OpenAPI spec at `/docs` (served
 by `tapir-swagger-ui-bundle` from the actual endpoints, so it can't drift),
-signs in with the shared password, and updates topics through `PUT`/`DELETE`.
+signs in with the shared password, and updates entries through `PUT`/`DELETE`.
 The agent does the web-reading the old enrichment stub couldn't; humans still
 drive and approve each write. The full workflow — auth, shapes, the `SipState`
 encoding, worked curl examples — is in `docs/agent-curation.md`.
@@ -197,11 +201,9 @@ split. One short summary line max where a doc comment earns its place.
 
 ## Git
 
-The repo is at `~/code/projects/traits` (branch `main`). **Run git yourself from
-a real terminal** — git writes from the agent sandbox leave undeletable `.lock`
-files on the mounted volume and ref updates fail. The convention:
-finish a change, get `compile` green, let the user test, then one clean commit
-when asked. Never amend/force-push. `frontend/package-lock.json` is tracked
+The repo is at `~/code/traits` (branch `main`). The convention: finish a
+change, get `compile` green, let the user test, then one clean commit when
+asked. Never amend/force-push. `frontend/package-lock.json` is tracked
 (only `node_modules/` and `dist/` are ignored).
 
 ## Running locally
@@ -220,9 +222,11 @@ served by the backend as static files.
 
 ## Data
 
-The store currently holds sample data — real curation begins with the rebuilt
-model ([`PLAN.md`](PLAN.md)). It is never seeded by the app: deleting
-`traits-data/traits.sqlite*` leaves an empty store, and the SQLite file is the
-artifact to back up and deploy. Entries are written through the editor UI or the
-HTTP API ([`docs/agent-curation.md`](docs/agent-curation.md)); the sources they
-are curated from are listed in [`DATA.md`](DATA.md).
+The store starts empty — real curation is step 4 of [`PLAN.md`](PLAN.md)'s plan
+of work, entered from scratch against this model. The app never seeds it:
+deleting `traits-data/traits.sqlite*` leaves an empty store, and the SQLite file
+is the artifact to back up and deploy. Entries are written through the editor UI
+or the HTTP API ([`docs/agent-curation.md`](docs/agent-curation.md)); the
+sources they are curated from are listed in [`DATA.md`](DATA.md). (A deployed
+prototype DB may still contain the old `topic` table with sample data; it is
+orphaned and safe to drop.)

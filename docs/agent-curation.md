@@ -3,14 +3,11 @@
 Traits has no built-in LLM. The data is curated over its HTTP API, so you can
 point a coding agent you already run — Claude Code, Claude Desktop, or any
 other — at a running instance and have it update entries, re-read linked
-discussions, and create new features. **You drive and review; the agent
-proposes the writes.**
+discussions, and create new ones. **You drive and review; the agent proposes
+the writes.**
 
 Pick one of the two setups below, then hand your agent this file. Everything
 after the setup sections applies to both.
-
-> This documents the API as it runs today. The data model is being rebuilt —
-> see [`PLAN.md`](../PLAN.md) — which will change the shapes below.
 
 ## What the agent needs
 
@@ -57,7 +54,7 @@ With both flags one file holds local and live at once. (`-b` on a jar that
 doesn't exist yet is a no-op, so the first login is fine.)
 
 A fresh local DB is **empty** — the app never seeds itself. Either curate a few
-topics by hand, or copy a SQLite file into `traits-data/`.
+entries by hand, or copy a SQLite file into `traits-data/`.
 
 ## Setup: the live site
 
@@ -101,61 +98,84 @@ Sessions last 30 days, so this is one-time setup; repeat it only on a `401`.
 
 | Method & path | Auth | Purpose |
 | --- | --- | --- |
-| `GET /api/health` | public | `{"status":"ok","topicCount":N}` — doubles as a readiness probe |
-| `GET /api/topics` | public | All topics, summarised (for lists) |
-| `GET /api/topics/{slug}` | public | One topic, in full |
+| `GET /api/health` | public | `{"status":"ok","entryCount":N}` — doubles as a readiness probe |
+| `GET /api/entries` | public | All entries, summarised (no sections/links/timeline) |
+| `GET /api/entries/{slug}` | public | One entry, in full |
 | `GET /api/search?q=` | public | Full-text search |
-| `GET /api/changelog?limit=` | public | Flattened timeline, newest first |
+| `GET /api/versions` | public | The version registry, ascending |
+| `GET /api/versions/{v}/entries` | public | Every entry with a status in version `v`, and that status |
 | `POST /api/auth/login` | public | Password → session cookie |
 | `POST /api/auth/logout` | public | Clears the cookie |
 | `GET /api/me` | editor | Current editor, or `401` — the way to test a session |
-| `PUT /api/topics/{slug}` | editor | Create or replace a topic |
-| `DELETE /api/topics/{slug}` | editor | Delete a topic |
+| `PUT /api/entries/{slug}` | editor | Create or replace an entry |
+| `DELETE /api/entries/{slug}` | editor | Delete an entry |
+| `PUT /api/versions/{v}` | editor | Create or replace a version registry row |
+| `DELETE /api/versions/{v}` | editor | Delete a version registry row |
 
 Note `GET /api/me`, not `/api/auth/me` — see the gotcha about wrong paths below.
 
 ## Data shapes
 
-A read returns a **`Topic`**; a write sends a **`TopicInput`**, which is a
-`Topic` minus `slug` (it's in the path) and `updatedAt` (stamped server-side).
-The lane and headline shown in the UI are *derived* from `availability` + `sip`
-— never sent.
+The model — the two tracks, what carries forward, what earns an entry — is
+specified in [`PLAN.md`](../PLAN.md); read it before curating. On the wire:
 
-**Every `TopicInput` field is required**, including the nullable ones: omitting
-`availability` or `sip` is a `400`, so send them as explicit `null`. There are
-no defaults and no partial updates.
+A read returns an **`Entry`**; a write sends an **`EntryInput`**, which is an
+`Entry` minus `slug` (it's in the path) and `updatedAt` (stamped server-side).
+Versions are strings of a Scala **minor** version — `"3.8"`, never `"3.8.1"`.
 
-A topic with a SIP (`GET /api/topics/better-fors`):
+**Every top-level `EntryInput` field is required**, including the nullable
+`sip`: omitting it is a `400`, so send an explicit `null`. There are no partial
+updates. (Inside an availability item, `backport` and `note` do default to
+`false`/absent, and responses omit them at those defaults.)
+
+A full entry (`GET /api/entries/named-tuples`):
 
 ```json
 {
-  "slug": "better-fors",
-  "title": "Better fors",
-  "tagline": "Cleaner desugaring and ergonomics for for-comprehensions.",
-  "sections": [{ "heading": "Overview", "body": "A set of improvements…" }],
-  "availability": null,
-  "sip": {
-    "number": "SIP-62",
-    "title": "Better fors",
-    "url": "https://github.com/scala/improvement-proposals/pull/62",
-    "state": "ImplementationWaiting"
-  },
+  "slug": "named-tuples",
+  "title": "Named tuples",
+  "tagline": "Tuples with named fields.",
+  "sections": [{ "heading": "Overview", "body": "Markdown…" }],
   "links": [
-    { "kind": "Sip", "title": "SIP-62 document", "url": "https://…", "watch": true }
+    { "kind": "Sip", "title": "SIP-58 document", "url": "https://…", "watch": true }
   ],
-  "timeline": [{ "date": "2024-09-01", "summary": "Accepted for implementation." }],
-  "tags": ["for-comprehension", "syntax"],
+  "timeline": [{ "date": "2024-09-01", "summary": "Accepted by the committee." }],
+  "tags": ["types", "syntax"],
+  "archived": false,
+  "sip": {
+    "number": "SIP-58",
+    "title": "Named tuples",
+    "url": "https://github.com/scala/improvement-proposals/pull/58",
+    "state": "CompletedShipped"
+  },
+  "availability": [
+    { "stage": "Experimental", "version": "3.5" },
+    { "stage": "Stable", "version": "3.7" }
+  ],
   "updatedAt": "2026-06-18T09:48:20Z"
 }
 ```
 
-`availability` (when present): `{ "kind": "Experimental|Preview|Stable",
-"sinceVersion": "3.5.0", "note": "markdown, optional" }`.
+`availability` is the whole track, one item per stage reached: `stage` is
+`PullRequest | Experimental | Preview | Stable | Deprecated | Removed`;
+`version` is required for every stage except `PullRequest`, where it must be
+absent (`null`); `backport: true` (legal on `Stable`/`Deprecated`/`Removed`)
+marks an entry that applies to its own version only; `note` is optional
+markdown for how to enable the feature in that state. The server validates all
+of this and rejects violations with a `400` listing the problems. Timeline is
+only for events that are *not* stage transitions — transitions are derived from
+`availability` and would end up duplicated.
+
+A version registry row (`PUT /api/versions/3.9`, all fields required):
+
+```json
+{ "lts": false, "released": false, "releaseDate": null, "releaseNotesUrl": null }
+```
 
 ### Enum encodings
 
 * `link.kind`: `Sip | Pr | Issue | ForumThread | Doc | Other`
-* `availability.kind`: `Experimental | Preview | Stable`
+* `availability.stage`: `PullRequest | Experimental | Preview | Stable | Deprecated | Removed`
 * `sip.state` — a closed set mirroring the `scala/improvement-proposals` labels.
   No-argument states are bare strings; the two vote-requested states carry a
   recommendation and encode as a tagged object:
@@ -174,7 +194,7 @@ A topic with a SIP (`GET /api/topics/better-fors`):
   | `Withdrawn` | `"Withdrawn"` |
 
 Case names are exact and closed; an unrecognised one is a parse error, not a
-fallback. When unsure of a shape, `GET` an existing topic and mirror it.
+fallback. When unsure of a shape, `GET` an existing entry and mirror it.
 
 ## Workflows
 
@@ -186,20 +206,38 @@ patch, so always read first and send the full document back. Anything you omit
 is deleted:
 
 ```bash
-curl -sS $BASE/api/topics/better-fors | jq 'del(.slug, .updatedAt)' > topic.json
-# edit topic.json
-curl -sS -b .traits-cookies -X PUT $BASE/api/topics/better-fors \
-  -H 'Content-Type: application/json' -d @topic.json
+curl -sS $BASE/api/entries/named-tuples | jq 'del(.slug, .updatedAt)' > entry.json
+# edit entry.json
+curl -sS -b .traits-cookies -X PUT $BASE/api/entries/named-tuples \
+  -H 'Content-Type: application/json' -d @entry.json
 ```
+
+**Record a stage transition** — append an item to `availability` (don't touch
+the earlier ones; the track is the history): a feature that just went stable in
+3.9 gains `{ "stage": "Stable", "version": "3.9" }` next to its existing
+`Experimental` item. Don't add a timeline event for it.
 
 **Re-read discussions** — the agent fetches the `watch: true` links itself (it
 has web tools), summarises what changed into a section, advances `sip.state` if
-the GitHub labels moved, and appends a dated `timeline` entry — then PUTs the
-result for you to review.
+the GitHub labels moved, and appends dated `timeline` events for votes and
+decisions — then PUTs the result for you to review.
 
-**Create a new feature** — `PUT` to a fresh slug with a full `TopicInput` body.
+**Create a new entry** — `PUT` to a fresh slug with a full `EntryInput` body.
+Whether a change deserves one at all is the bar in `PLAN.md`: would someone
+look it up by name, long after it shipped?
 
-**Delete** — `DELETE $BASE/api/topics/{slug}` (with the cookie).
+**Maintain the version registry** — when a new minor is planned or released
+(sources: the scala3 milestones and release notes):
+
+```bash
+curl -sS -b .traits-cookies -X PUT $BASE/api/versions/3.9 \
+  -H 'Content-Type: application/json' \
+  -d '{"lts":false,"released":true,"releaseDate":"2026-05-14","releaseNotesUrl":"https://github.com/scala/scala3/releases/tag/3.9.0"}'
+```
+
+**Delete** — `DELETE $BASE/api/entries/{slug}` (with the cookie). Prefer
+setting `"archived": true` for anything that was ever real; delete is for
+mistakes.
 
 ## Gotchas
 

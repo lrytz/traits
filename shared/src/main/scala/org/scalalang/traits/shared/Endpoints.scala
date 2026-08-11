@@ -16,7 +16,7 @@ object Endpoints:
 
   val SessionCookieName = "traits_session"
 
-  case class Health(status: String, topicCount: Long) derives upickle.default.ReadWriter, Schema
+  case class Health(status: String, entryCount: Long) derives upickle.default.ReadWriter, Schema
 
   private val base = endpoint.in("api")
 
@@ -25,35 +25,41 @@ object Endpoints:
 
   // ---- public reads ----
 
-  val listTopics: PublicEndpoint[Unit, ApiError, List[FeatureSummary], Any] =
+  val listEntries: PublicEndpoint[Unit, ApiError, List[EntrySummary], Any] =
     base.get
-      .in("topics")
-      .out(jsonBody[List[FeatureSummary]])
+      .in("entries")
+      .out(jsonBody[List[EntrySummary]])
       .errorOut(ApiError.jsonBody)
-      .summary("All topics, summarised, for list and pipeline views")
+      .summary("All entries, summarised, for list and board views")
 
-  val getTopic: PublicEndpoint[String, ApiError, Topic, Any] =
+  val getEntry: PublicEndpoint[String, ApiError, Entry, Any] =
     base.get
-      .in("topics" / path[String]("slug"))
-      .out(jsonBody[Topic])
+      .in("entries" / path[String]("slug"))
+      .out(jsonBody[Entry])
       .errorOut(ApiError.jsonBody)
-      .summary("One topic in full")
+      .summary("One entry in full")
 
-  val search: PublicEndpoint[String, ApiError, List[FeatureSummary], Any] =
+  val search: PublicEndpoint[String, ApiError, List[EntrySummary], Any] =
     base.get
       .in("search")
       .in(query[String]("q"))
-      .out(jsonBody[List[FeatureSummary]])
+      .out(jsonBody[List[EntrySummary]])
       .errorOut(ApiError.jsonBody)
-      .summary("Full-text search over topics")
+      .summary("Full-text search over entries")
 
-  val changelog: PublicEndpoint[Option[Int], ApiError, List[ChangelogEntry], Any] =
+  val listVersions: PublicEndpoint[Unit, ApiError, List[Version], Any] =
     base.get
-      .in("changelog")
-      .in(query[Option[Int]]("limit"))
-      .out(jsonBody[List[ChangelogEntry]])
+      .in("versions")
+      .out(jsonBody[List[Version]])
       .errorOut(ApiError.jsonBody)
-      .summary("Reverse-chronological timeline flattened across all topics")
+      .summary("The version registry, ascending")
+
+  val versionEntries: PublicEndpoint[VersionId, ApiError, List[EntryStatus], Any] =
+    base.get
+      .in("versions" / path[VersionId]("version") / "entries")
+      .out(jsonBody[List[EntryStatus]])
+      .errorOut(ApiError.jsonBody)
+      .summary("Every entry with a status in the given version, and that status")
 
   // ---- auth ----
 
@@ -77,16 +83,30 @@ object Endpoints:
 
   // ---- editor writes (cookie attached server-side) ----
 
-  val putTopic: PublicEndpoint[(String, TopicInput), ApiError, Topic, Any] =
+  val putEntry: PublicEndpoint[(String, EntryInput), ApiError, Entry, Any] =
     base.put
-      .in("topics" / path[String]("slug"))
-      .in(jsonBody[TopicInput])
-      .out(jsonBody[Topic])
+      .in("entries" / path[String]("slug"))
+      .in(jsonBody[EntryInput])
+      .out(jsonBody[Entry])
       .errorOut(ApiError.jsonBody)
-      .summary("Create or replace a topic")
+      .summary("Create or replace an entry")
 
-  val deleteTopic: PublicEndpoint[String, ApiError, Unit, Any] =
+  val deleteEntry: PublicEndpoint[String, ApiError, Unit, Any] =
     base.delete
-      .in("topics" / path[String]("slug"))
+      .in("entries" / path[String]("slug"))
       .errorOut(ApiError.jsonBody)
-      .summary("Delete a topic")
+      .summary("Delete an entry")
+
+  val putVersion: PublicEndpoint[(VersionId, VersionInput), ApiError, Version, Any] =
+    base.put
+      .in("versions" / path[VersionId]("version"))
+      .in(jsonBody[VersionInput])
+      .out(jsonBody[Version])
+      .errorOut(ApiError.jsonBody)
+      .summary("Create or replace a version registry row")
+
+  val deleteVersion: PublicEndpoint[VersionId, ApiError, Unit, Any] =
+    base.delete
+      .in("versions" / path[VersionId]("version"))
+      .errorOut(ApiError.jsonBody)
+      .summary("Delete a version registry row")

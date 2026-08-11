@@ -31,7 +31,7 @@ class AuthApi(
 
   def requireEditor(cookieValue: Option[String]): Either[ApiError, Session] =
     cookieValue match
-      case None    => Left(ApiError(ApiError.Unauthorized, "Not signed in"))
+      case None => Left(ApiError(ApiError.Unauthorized, "Not signed in"))
       case Some(c) =>
         codec.decode(c) match
           case Left(_)        => Left(ApiError(ApiError.Unauthorized, "Invalid session"))
@@ -39,7 +39,7 @@ class AuthApi(
 
   private val loginWithCookie  = Endpoints.login.out(setCookie(Endpoints.SessionCookieName))
   private val logoutWithCookie = Endpoints.logout.out(setCookie(Endpoints.SessionCookieName))
-  private val meWithCookie     = Endpoints.me.in(cookie[Option[String]](Endpoints.SessionCookieName))
+  private val meWithCookie = Endpoints.me.in(cookie[Option[String]](Endpoints.SessionCookieName))
 
   val login: ServerEndpoint[Any, Identity] =
     loginWithCookie.handle { req =>

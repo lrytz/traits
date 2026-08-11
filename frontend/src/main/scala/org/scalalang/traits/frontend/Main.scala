@@ -1,6 +1,13 @@
 package org.scalalang.traits.frontend
 
-import org.scalalang.traits.frontend.pages.{ChangelogPage, EditorPage, LoginPage, PipelinePage, TopicPage}
+import org.scalalang.traits.frontend.pages.{
+  BoardPage,
+  EditorPage,
+  EntryPage,
+  LoginPage,
+  SipBoardPage,
+  VersionsPage
+}
 import org.scalalang.traits.frontend.Api.given
 import com.raquo.laminar.api.L.*
 import org.scalajs.dom
@@ -27,9 +34,13 @@ object Main:
         div(
           cls := "flex gap-4 text-sm",
           navLink(Page.Home, "Pipeline"),
-          navLink(Page.Changelog, "Changelog")
+          navLink(Page.Sips, "SIPs"),
+          navLink(Page.Versions, "Versions")
         ),
-        div(cls := "ml-auto flex items-center gap-4 text-sm", child <-- Session.current.signal.map(editorControls))
+        div(
+          cls := "ml-auto flex items-center gap-4 text-sm",
+          child <-- Session.current.signal.map(editorControls)
+        )
       )
     )
 
@@ -38,7 +49,7 @@ object Main:
       case Some(_) =>
         div(
           cls := "flex items-center gap-3",
-          navLink(Page.NewTopic, "+ New feature", "text-blue-600 hover:underline font-medium"),
+          navLink(Page.NewEntry, "+ New entry", "text-blue-600 hover:underline font-medium"),
           button(
             cls := "text-slate-500 hover:text-slate-900",
             "Sign out",
@@ -53,18 +64,23 @@ object Main:
       case None =>
         navLink(Page.Login, "Sign in", "text-slate-600 hover:text-slate-900")
 
-  private def navLink(page: Page, text: String, extraCls: String = "text-slate-600 hover:text-slate-900"): HtmlElement =
+  private def navLink(
+      page: Page,
+      text: String,
+      extraCls: String = "text-slate-600 hover:text-slate-900"
+  ): HtmlElement =
     a(
-      cls := extraCls,
+      cls  := extraCls,
       href := Routes.urlFor(page),
       onClick.preventDefault --> { _ => Routes.router.pushState(page) },
       text
     )
 
   private def renderPage(page: Page): HtmlElement = page match
-    case Page.Home            => PipelinePage()
-    case Page.Changelog       => ChangelogPage()
+    case Page.Home            => BoardPage()
+    case Page.Sips            => SipBoardPage()
+    case Page.Versions        => VersionsPage()
     case Page.Login           => LoginPage()
-    case Page.NewTopic        => EditorPage(None)
-    case Page.TopicView(slug) => TopicPage(slug)
-    case Page.EditTopic(slug) => EditorPage(Some(slug))
+    case Page.NewEntry        => EditorPage(None)
+    case Page.EntryView(slug) => EntryPage(slug)
+    case Page.EditEntry(slug) => EditorPage(Some(slug))

@@ -109,14 +109,14 @@ EOF
 sudo ln -s /etc/nginx/sites-available/traits.ddns.net \
            /etc/nginx/sites-enabled/traits.ddns.net
 sudo nginx -t && sudo systemctl reload nginx
-curl -s http://traits.ddns.net/api/health       # → {"status":"ok","topicCount":24}
+curl -s http://traits.ddns.net/api/health       # → {"status":"ok","entryCount":0}
 
 sudo certbot --nginx -d traits.ddns.net          # pick "2: Redirect"
 curl -s https://traits.ddns.net/api/health       # → {"status":"ok",...} over TLS
 ```
 
-Open `https://traits.ddns.net` — the pipeline, detail, changelog, and the
-`/docs` API browser are all served by the one container.
+Open `https://traits.ddns.net` — the boards, entry pages, version registry and
+the `/docs` API browser are all served by the one container.
 
 ## Day-to-day deploys
 
@@ -142,7 +142,7 @@ ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker comp
 
 ```sh
 ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose logs -f'
-curl https://traits.ddns.net/api/health     # topic count doubles as a readiness probe
+curl https://traits.ddns.net/api/health     # entry count doubles as a readiness probe
 ```
 
 json-file logging is capped at 10 MB × 5 files.

@@ -3,8 +3,8 @@ package org.scalalang.traits.frontend
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
-/** Markdown → sanitised HTML. We store raw markdown everywhere; rendering goes through `marked`
-  * and then `DOMPurify` so user/AI-authored content can never inject script into this public page.
+/** Markdown → sanitised HTML. We store raw markdown everywhere; rendering goes through `marked` and
+  * then `DOMPurify` so user/AI-authored content can never inject script into this public page.
   */
 @js.native
 @JSImport("marked", "marked")

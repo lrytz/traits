@@ -7,8 +7,9 @@ import org.scalalang.traits.shared.*
 import com.raquo.laminar.api.L.*
 import org.scalajs.dom
 
-/** Create (`slugOpt = None`) or edit an existing topic. Writes go through the editor-gated
-  * `putTopic` / `deleteTopic`; the form mirrors the [[TopicInput]] shape field-for-field.
+/** Create (`slugOpt = None`) or edit an existing entry. Writes go through the editor-gated
+  * `putEntry` / `deleteEntry`; the form mirrors the [[EntryInput]] shape field-for-field, and runs
+  * the shared validation rules before sending.
   */
 object EditorPage:
 
@@ -36,9 +37,9 @@ object EditorPage:
     case LinkKind.Other       => "Other"
 
   private final class SectionDraft(heading0: String, body0: String):
-    val heading            = Var(heading0)
-    val body               = Var(body0)
-    def toModel: Section   = Section(heading.now().trim, body.now())
+    val heading          = Var(heading0)
+    val body             = Var(body0)
+    def toModel: Section = Section(heading.now().trim, body.now())
 
   private final class LinkDraft(kind0: LinkKind, title0: String, url0: String, watch0: Boolean):
     val kind          = Var(kind0)
@@ -48,27 +49,45 @@ object EditorPage:
     def toModel: Link = Link(kind.now(), title.now().trim, url.now().trim, watch.now())
 
   private final class TimelineDraft(date0: String, summary0: String, source0: String):
-    val date     = Var(date0)
-    val summary  = Var(summary0)
-    val source   = Var(source0)
+    val date    = Var(date0)
+    val summary = Var(summary0)
+    val source  = Var(source0)
     def toModel: TimelineEntry =
       TimelineEntry(date.now().trim, summary.now().trim, Some(source.now().trim).filter(_.nonEmpty))
+
+  private final class AvailabilityDraft(
+      stage0: AvailabilityStage,
+      version0: String,
+      backport0: Boolean,
+      note0: String
+  ):
+    val stage    = Var(stage0)
+    val version  = Var(version0)
+    val backport = Var(backport0)
+    val note     = Var(note0)
+
+    /** Left when the version text doesn't parse; the shared rules validate the rest. */
+    def toModel: Either[String, Availability] =
+      val text = version.now().trim
+      val parsed =
+        if text.isEmpty then Right(None)
+        else VersionId.parse(text).map(Some(_)).toRight(s"invalid version '$text' (want e.g. 3.8)")
+      parsed.map(v =>
+        Availability(stage.now(), v, backport.now(), Some(note.now()).filter(_.trim.nonEmpty))
+      )
 
   def apply(slugOpt: Option[String]): HtmlElement =
     val creating = slugOpt.isEmpty
 
-    val slug     = Var(slugOpt.getOrElse(""))
-    val title    = Var("")
-    val tagline  = Var("")
-    val tagsText = Var("")
-    val sections = Var(List.empty[SectionDraft])
-    val links    = Var(List.empty[LinkDraft])
-    val timeline = Var(List.empty[TimelineDraft])
-
-    val availEnabled = Var(false)
-    val availKind    = Var[AvailabilityKind](AvailabilityKind.Experimental)
-    val availVersion = Var("")
-    val availNote    = Var("")
+    val slug         = Var(slugOpt.getOrElse(""))
+    val title        = Var("")
+    val tagline      = Var("")
+    val tagsText     = Var("")
+    val archived     = Var(false)
+    val sections     = Var(List.empty[SectionDraft])
+    val links        = Var(List.empty[LinkDraft])
+    val timeline     = Var(List.empty[TimelineDraft])
+    val availability = Var(List.empty[AvailabilityDraft])
 
     val sipEnabled = Var(false)
     val sipNumber  = Var("")
@@ -81,21 +100,27 @@ object EditorPage:
     val saving    = Var(false)
 
     slugOpt.foreach { s =>
-      Api.getTopic(s).foreach {
-        case Right(t) =>
-          title.set(t.title)
-          tagline.set(t.tagline)
-          tagsText.set(t.tags.mkString(", "))
-          sections.set(t.sections.map(sec => SectionDraft(sec.heading, sec.body)))
-          links.set(t.links.map(l => LinkDraft(l.kind, l.title, l.url, l.watch)))
-          timeline.set(t.timeline.map(e => TimelineDraft(e.date, e.summary, e.sourceUrl.getOrElse(""))))
-          t.availability.foreach { a =>
-            availEnabled.set(true)
-            availKind.set(a.kind)
-            availVersion.set(a.sinceVersion)
-            availNote.set(a.note.getOrElse(""))
-          }
-          t.sip.foreach { sp =>
+      Api.getEntry(s).foreach {
+        case Right(e) =>
+          title.set(e.title)
+          tagline.set(e.tagline)
+          tagsText.set(e.tags.mkString(", "))
+          archived.set(e.archived)
+          sections.set(e.sections.map(sec => SectionDraft(sec.heading, sec.body)))
+          links.set(e.links.map(l => LinkDraft(l.kind, l.title, l.url, l.watch)))
+          timeline
+            .set(e.timeline.map(t => TimelineDraft(t.date, t.summary, t.sourceUrl.getOrElse(""))))
+          availability.set(
+            e.availability.map(a =>
+              AvailabilityDraft(
+                a.stage,
+                a.version.fold("")(_.render),
+                a.backport,
+                a.note.getOrElse("")
+              )
+            )
+          )
+          e.sip.foreach { sp =>
             sipEnabled.set(true)
             sipNumber.set(sp.number.getOrElse(""))
             sipTitle.set(sp.title)
@@ -107,42 +132,56 @@ object EditorPage:
       }
     }
 
-    def buildInput(): TopicInput =
-      TopicInput(
-        title = title.now().trim,
-        tagline = tagline.now().trim,
-        sections = sections.now().map(_.toModel),
-        availability =
-          if availEnabled.now() then
-            Some(Availability(availKind.now(), availVersion.now().trim, Some(availNote.now()).filter(_.trim.nonEmpty)))
-          else None,
-        sip =
-          if sipEnabled.now() then
-            Some(Sip(Some(sipNumber.now().trim).filter(_.nonEmpty), sipTitle.now().trim, sipUrl.now().trim, sipState.now()))
-          else None,
-        links = links.now().map(_.toModel),
-        timeline = timeline.now().map(_.toModel),
-        tags = tagsText.now().split(",").map(_.trim).filter(_.nonEmpty).toList
-      )
+    def buildInput(): Either[List[String], EntryInput] =
+      val (parseErrors, avs) = availability.now().map(_.toModel).partitionMap(identity)
+      if parseErrors.nonEmpty then Left(parseErrors)
+      else
+        val input = EntryInput(
+          title = title.now().trim,
+          tagline = tagline.now().trim,
+          sections = sections.now().map(_.toModel),
+          links = links.now().map(_.toModel),
+          timeline = timeline.now().map(_.toModel),
+          tags = tagsText.now().split(",").map(_.trim).filter(_.nonEmpty).toList,
+          archived = archived.now(),
+          sip =
+            if sipEnabled.now() then
+              Some(
+                Sip(
+                  Some(sipNumber.now().trim).filter(_.nonEmpty),
+                  sipTitle.now().trim,
+                  sipUrl.now().trim,
+                  sipState.now()
+                )
+              )
+            else None,
+          availability = avs
+        )
+        input.validate match
+          case Nil    => Right(input)
+          case errors => Left(errors)
 
     def save(): Unit =
       val s = slug.now().trim
       if s.isEmpty || title.now().trim.isEmpty then error.set(Some("Slug and title are required."))
       else if !saving.now() then
-        saving.set(true)
-        error.set(None)
-        Api.putTopic(s, buildInput()).foreach {
-          case Right(t) =>
-            saving.set(false)
-            Routes.router.pushState(Page.TopicView(t.slug))
-          case Left(e) =>
-            saving.set(false)
-            error.set(Some(e.message))
-        }
+        buildInput() match
+          case Left(errors) => error.set(Some(errors.mkString("; ")))
+          case Right(input) =>
+            saving.set(true)
+            error.set(None)
+            Api.putEntry(s, input).foreach {
+              case Right(e) =>
+                saving.set(false)
+                Routes.router.pushState(Page.EntryView(e.slug))
+              case Left(e) =>
+                saving.set(false)
+                error.set(Some(e.message))
+            }
 
     def remove(): Unit =
       if dom.window.confirm(s"Delete '${slug.now()}'? This cannot be undone.") then
-        Api.deleteTopic(slug.now()).foreach {
+        Api.deleteEntry(slug.now()).foreach {
           case Right(_) => Routes.router.pushState(Page.Home)
           case Left(e)  => error.set(Some(e.message))
         }
@@ -178,7 +217,7 @@ object EditorPage:
           label(
             cls := "flex items-center gap-2 text-sm text-slate-600",
             Components.checkboxInput(d.watch),
-            "Watch (AI re-reads this link)"
+            "Watch (a curating agent re-reads this link)"
           ),
           button(
             cls := "text-rose-600 text-sm hover:underline",
@@ -207,35 +246,49 @@ object EditorPage:
         )
       )
 
-    def sectionBlock(heading: String, addLabel: String, rows: HtmlElement, onAdd: () => Unit): HtmlElement =
+    def availabilityRow(d: AvailabilityDraft): HtmlElement =
+      div(
+        cls := "border border-slate-200 rounded-lg p-3 space-y-2 bg-white",
+        div(
+          cls := "grid grid-cols-1 sm:grid-cols-[10rem_8rem_1fr] gap-2 items-end",
+          Components.field(
+            "Stage",
+            Components.selectInput(
+              d.stage,
+              AvailabilityStage.values.toList,
+              AvailabilityStage.label,
+              _.toString
+            )
+          ),
+          Components.field("Version", Components.textInput(d.version, "e.g. 3.8")),
+          div(
+            cls := "flex items-center justify-between pb-1.5",
+            label(
+              cls := "flex items-center gap-2 text-sm text-slate-600",
+              Components.checkboxInput(d.backport),
+              "Backport"
+            ),
+            button(
+              cls := "text-rose-600 text-sm hover:underline",
+              "Remove",
+              onClick --> { _ => availability.update(_.filterNot(_ eq d)) }
+            )
+          )
+        ),
+        Components.multilineInput(d.note, 2, "How to enable in this state (markdown, optional)…")
+      )
+
+    def sectionBlock(
+        heading: String,
+        addLabel: String,
+        rows: HtmlElement,
+        onAdd: () => Unit
+    ): HtmlElement =
       div(
         cls := "space-y-3",
         h2(cls := "text-lg font-semibold text-slate-800", heading),
         rows,
         button(cls := Components.btnSecondary, addLabel, onClick --> { _ => onAdd() })
-      )
-
-    val availabilityBlock =
-      div(
-        cls := "border border-slate-200 rounded-lg p-4 space-y-3 bg-white",
-        label(
-          cls := "flex items-center gap-2 font-medium text-slate-800",
-          Components.checkboxInput(availEnabled),
-          "Availability"
-        ),
-        child <-- availEnabled.signal.map {
-          case false => emptyNode
-          case true =>
-            div(
-              cls := "space-y-3",
-              div(
-                cls := "grid grid-cols-1 sm:grid-cols-2 gap-3",
-                Components.field("Kind", Components.selectInput(availKind, AvailabilityKind.values.toList, _.toString, _.toString)),
-                Components.field("Since version", Components.textInput(availVersion, "e.g. 3.7.0"))
-              ),
-              Components.field("Note (markdown, optional)", Components.multilineInput(availNote, 3, "How to enable in this state…"))
-            )
-        }
       )
 
     val sipBlock =
@@ -253,11 +306,15 @@ object EditorPage:
               cls := "space-y-3",
               div(
                 cls := "grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-3",
-                Components.field("Number (optional)", Components.textInput(sipNumber, "e.g. SIP-58")),
+                Components
+                  .field("Number (optional)", Components.textInput(sipNumber, "e.g. SIP-58")),
                 Components.field("Title", Components.textInput(sipTitle, "Proposal title"))
               ),
               Components.field("URL", Components.textInput(sipUrl, "https://…")),
-              Components.field("State", Components.selectInput(sipState, allSipStates, SipState.label, _.toString))
+              Components.field(
+                "State",
+                Components.selectInput(sipState, allSipStates, SipState.label, _.toString)
+              )
             )
         }
       )
@@ -284,18 +341,32 @@ object EditorPage:
           Components.field("Title", Components.textInput(title, "Display name"))
         ),
         Components.field("Tagline", Components.textInput(tagline, "One-line summary")),
-        Components.field("Tags (comma-separated)", Components.textInput(tagsText, "syntax, types, …")),
+        div(
+          cls := "grid grid-cols-1 sm:grid-cols-2 gap-4 items-end",
+          Components
+            .field("Tags (comma-separated)", Components.textInput(tagsText, "syntax, types, …")),
+          label(
+            cls := "flex items-center gap-2 text-sm text-slate-600 pb-1.5",
+            Components.checkboxInput(archived),
+            "Archived (hidden from the boards)"
+          )
+        ),
         sectionBlock(
           "Sections",
           "+ Add section",
           div(cls := "space-y-3", children <-- sections.signal.map(_.map(sectionRow))),
           () => sections.update(_ :+ SectionDraft("", ""))
         ),
-        div(
-          cls := "grid grid-cols-1 sm:grid-cols-2 gap-4",
-          availabilityBlock,
-          sipBlock
+        sectionBlock(
+          "Availability",
+          "+ Add availability",
+          div(cls := "space-y-3", children <-- availability.signal.map(_.map(availabilityRow))),
+          () =>
+            availability.update(
+              _ :+ AvailabilityDraft(AvailabilityStage.Experimental, "", false, "")
+            )
         ),
+        sipBlock,
         sectionBlock(
           "Links",
           "+ Add link",
@@ -304,7 +375,7 @@ object EditorPage:
         ),
         sectionBlock(
           "Timeline",
-          "+ Add milestone",
+          "+ Add event",
           div(cls := "space-y-3", children <-- timeline.signal.map(_.map(timelineRow))),
           () => timeline.update(_ :+ TimelineDraft("", "", ""))
         ),
@@ -317,15 +388,17 @@ object EditorPage:
           button(
             cls := Components.btnPrimary,
             disabled <-- saving.signal,
-            child.text <-- saving.signal.map(if _ then "Saving…" else if creating then "Create feature" else "Save changes"),
+            child.text <-- saving.signal.map(
+              if _ then "Saving…" else if creating then "Create entry" else "Save changes"
+            ),
             onClick --> { _ => save() }
           ),
           a(
             cls := Components.btnSecondary,
             "Cancel",
-            href := Routes.urlFor(slugOpt.map(Page.TopicView(_)).getOrElse(Page.Home)),
+            href := Routes.urlFor(slugOpt.map(Page.EntryView(_)).getOrElse(Page.Home)),
             onClick.preventDefault --> { _ =>
-              Routes.router.pushState(slugOpt.map(Page.TopicView(_)).getOrElse(Page.Home))
+              Routes.router.pushState(slugOpt.map(Page.EntryView(_)).getOrElse(Page.Home))
             }
           ),
           if creating then emptyNode
@@ -342,7 +415,7 @@ object EditorPage:
       Components.pageLink(Page.Home, "← All features", "text-sm"),
       div(
         cls := "mt-3 max-w-3xl",
-        Components.pageTitle(if creating then "New feature" else s"Edit ${slugOpt.getOrElse("")}"),
+        Components.pageTitle(if creating then "New entry" else s"Edit ${slugOpt.getOrElse("")}"),
         div(cls := "mt-4", Components.loaded(loadState.signal)(_ => formBody))
       )
     )

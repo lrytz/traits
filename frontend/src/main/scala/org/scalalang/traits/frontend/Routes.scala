@@ -5,11 +5,12 @@ import upickle.default.*
 
 enum Page derives ReadWriter:
   case Home
-  case Changelog
+  case Sips
+  case Versions
   case Login
-  case NewTopic
-  case TopicView(slug: String)
-  case EditTopic(slug: String)
+  case NewEntry
+  case EntryView(slug: String)
+  case EditEntry(slug: String)
 
 object Routes:
 
@@ -24,26 +25,28 @@ object Routes:
 
   private val homeRoute = staticRoute(Page.Home, Nil)
 
-  private val changelogRoute = staticRoute(Page.Changelog, List("changelog"))
+  private val sipsRoute = staticRoute(Page.Sips, List("sips"))
+
+  private val versionsRoute = staticRoute(Page.Versions, List("versions"))
 
   private val loginRoute = staticRoute(Page.Login, List("login"))
 
-  private val newTopicRoute = staticRoute(Page.NewTopic, List("new"))
+  private val newEntryRoute = staticRoute(Page.NewEntry, List("new"))
 
-  private val topicRoute = Route[Page.TopicView, String](
+  private val entryRoute = Route[Page.EntryView, String](
     encode = _.slug,
-    decode = Page.TopicView(_),
-    pattern = root / "topics" / segment[String] / endOfSegments
+    decode = Page.EntryView(_),
+    pattern = root / "entries" / segment[String] / endOfSegments
   )
 
-  private val editTopicRoute = Route[Page.EditTopic, String](
+  private val editEntryRoute = Route[Page.EditEntry, String](
     encode = _.slug,
-    decode = Page.EditTopic(_),
-    pattern = root / "topics" / segment[String] / "edit" / endOfSegments
+    decode = Page.EditEntry(_),
+    pattern = root / "entries" / segment[String] / "edit" / endOfSegments
   )
 
   val allRoutes: List[Route[? <: Page, ?]] =
-    List(homeRoute, changelogRoute, loginRoute, newTopicRoute, editTopicRoute, topicRoute)
+    List(homeRoute, sipsRoute, versionsRoute, loginRoute, newEntryRoute, editEntryRoute, entryRoute)
 
   lazy val router: Router[Page] = new Router[Page](
     routes = allRoutes,

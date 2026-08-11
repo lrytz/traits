@@ -9,13 +9,14 @@ version, and how do I use it?*
 
 ## Status
 
-A working proof of concept, deployed, holding sample data. It validated the
-idea; the model is now being rebuilt properly, and real curation starts after
-that.
+The proof of concept validated the idea; the app now implements the real model
+— the two-track lifecycle, versioned availability with backports, the version
+registry, and the per-version boards. The store starts empty: entering real
+data is the next step, and the design still awaits review by the teams
+involved.
 
 **[`PLAN.md`](PLAN.md) is the design document** — what the app tracks, the
-lifecycle, the data model, the views, and the plan of work. Read it first. The
-notes below describe the code as it stands today, which the plan will change.
+lifecycle, the data model, the views, and the plan of work. Read it first.
 
 ## Running it
 

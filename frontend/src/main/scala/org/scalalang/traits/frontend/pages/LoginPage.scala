@@ -5,7 +5,8 @@ import org.scalalang.traits.frontend.{Api, Page, Routes, Session}
 import org.scalalang.traits.frontend.Api.given
 import com.raquo.laminar.api.L.*
 
-/** Shared-password sign-in. On success the HttpOnly cookie is set and [[Session]] flips to editor. */
+/** Shared-password sign-in. On success the HttpOnly cookie is set and [[Session]] flips to editor.
+  */
 object LoginPage:
 
   def apply(): HtmlElement =
@@ -34,7 +35,10 @@ object LoginPage:
         Components.subtitle("Editor access for the SIP committee."),
         div(
           cls := "mt-5 space-y-4",
-          Components.field("Password", Components.passwordInput(password, "Editor password", () => submit())),
+          Components.field(
+            "Password",
+            Components.passwordInput(password, "Editor password", () => submit())
+          ),
           child <-- error.signal.map {
             case Some(m) => Components.errorBox(m)
             case None    => emptyNode
