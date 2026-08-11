@@ -324,9 +324,11 @@ projection follow from those.
 **Add** — `Version` and its table, `archived`, `statusIn`, the version picker
 and the SIP board.
 
-Naming: this document calls an entry an *entry*, while the code says `Topic` and
-the API path is `/api/topics`. Worth settling at step 1 — renaming is cheap
-before the data exists and awkward afterwards.
+**Rename** — the code's `Topic` becomes `Entry`, at step 1 while no real data
+exists: `Topic` → `Entry`, `TopicInput` → `EntryInput`, `FeatureSummary` →
+`EntrySummary`, the `topic` table, the `Topic{Repo,Service,Api}` trio, the
+frontend pages, and `/api/topics` → `/api/entries` with the examples in the
+curation guide.
 
 [`docs/agent-curation.md`](docs/agent-curation.md) is the contract external
 agents follow, so it has to be updated alongside step 1 rather than after it.
