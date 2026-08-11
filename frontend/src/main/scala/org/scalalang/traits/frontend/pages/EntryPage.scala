@@ -23,7 +23,7 @@ object EntryPage:
     Components.container(
       div(
         cls := "flex items-center justify-between",
-        Components.pageLink(Page.Home, "← All features", "text-sm"),
+        Components.pageLink(Page.Home(), "← All features", "text-sm"),
         child <-- Session.signedIn.map {
           case true  => Components.pageLink(Page.EditEntry(slug), "Edit", "text-sm font-medium")
           case false => emptyNode

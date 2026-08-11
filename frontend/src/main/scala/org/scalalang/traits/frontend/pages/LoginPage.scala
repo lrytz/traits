@@ -22,7 +22,7 @@ object LoginPage:
           case Right(editor) =>
             submitting.set(false)
             Session.set(editor)
-            Routes.router.pushState(Page.Home)
+            Routes.router.pushState(Page.Home())
           case Left(e) =>
             submitting.set(false)
             error.set(Some(e.message))

@@ -4,7 +4,7 @@ import com.raquo.waypoint.*
 import upickle.default.*
 
 enum Page derives ReadWriter:
-  case Home
+  case Home(version: Option[String] = None, q: Option[String] = None)
   case Sips
   case Versions
   case Login
@@ -23,7 +23,13 @@ object Routes:
       pattern = segments.foldLeft(root)(_ / _) / endOfSegments
     )
 
-  private val homeRoute = staticRoute(Page.Home, Nil)
+  // The board's picked version and text filter live in the URL (`/?v=3.4&q=tuple`) so board
+  // states are shareable and survive reload. Both params are optional; bare `/` still matches.
+  private val homeRoute = Route.onlyQuery[Page.Home, (Option[String], Option[String])](
+    encode = p => (p.version, p.q),
+    decode = args => Page.Home(args._1, args._2),
+    pattern = (root / endOfSegments) ? (param[String]("v").? & param[String]("q").?)
+  )
 
   private val sipsRoute = staticRoute(Page.Sips, List("sips"))
 
@@ -53,7 +59,7 @@ object Routes:
     serializePage = write(_),
     deserializePage = read[Page](_),
     getPageTitle = _ => "Traits",
-    routeFallback = _ => Page.Home
+    routeFallback = _ => Page.Home()
   )
 
   def urlFor(page: Page): String =

@@ -7,13 +7,17 @@ import org.scalalang.traits.shared.*
 import com.raquo.laminar.api.L.*
 
 /** Home view: the pipeline board, one column per availability stage plus Idea, computed for a
-  * picked version (default: the latest released one). Includes a live text filter.
+  * picked version (default: the latest released one). The picked version and the text filter are
+  * URL query params (`/?v=3.4&q=tuple`) — the URL is the source of truth, written with
+  * `replaceState` so typing doesn't pollute history.
   */
 object BoardPage:
 
-  def apply(): HtmlElement =
-    val state      = Var[Loaded[(List[EntrySummary], List[Version])]](Loaded.Loading)
-    val searchTerm = Var("")
+  private val controlCls =
+    "border border-slate-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+
+  def apply(pageSignal: Signal[Page.Home]): HtmlElement =
+    val state = Var[Loaded[(List[EntrySummary], List[Version])]](Loaded.Loading)
 
     Api.listEntries().zip(Api.listVersions()).foreach {
       case (Right(es), Right(vs)) => state.set(Loaded.Ok((es, vs)))
@@ -21,15 +25,20 @@ object BoardPage:
       case (_, Left(e))           => state.set(Loaded.Failed(e.message))
     }
 
+    def update(f: Page.Home => Page.Home): Unit =
+      Routes.router.currentPageSignal.now() match
+        case h: Page.Home => Routes.router.replaceState(f(h))
+        case _            => ()
+
     Components.containerWide(
       Components.loaded(state.signal) { case (entries, versions) =>
-        val defaultVersion =
-          Version
-            .latestReleased(versions)
-            .orElse(versions.map(_.version).maxOption)
-            .getOrElse(VersionId(3, 0))
-        val picked   = Var(defaultVersion)
         val released = versions.filter(_.released).map(_.version).toSet
+        val default = Version
+          .latestReleased(versions)
+          .orElse(versions.map(_.version).maxOption)
+          .getOrElse(VersionId(3, 0))
+        def versionOf(p: Page.Home): VersionId =
+          p.version.flatMap(VersionId.parse).getOrElse(default)
 
         div(
           div(
@@ -46,25 +55,34 @@ object BoardPage:
                 label(
                   cls := "block",
                   Components.fieldLabel("Scala version"),
-                  Components.selectInput(
-                    picked,
-                    versions.map(_.version).sorted.reverse,
-                    v => versionLabel(v, versions),
-                    _.render
+                  select(
+                    cls := controlCls,
+                    controlled(
+                      value <-- pageSignal.map(p => versionOf(p).render),
+                      onChange.mapToValue --> { s => update(_.copy(version = Some(s))) }
+                    ),
+                    versions
+                      .map(_.version)
+                      .sorted
+                      .reverse
+                      .map(v => option(value := v.render, versionLabel(v, versions)))
                   )
                 )
               ,
               input(
                 tpe         := "search",
                 placeholder := "Filter features…",
-                cls := "border border-slate-300 rounded-md px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-200",
-                onInput.mapToValue --> searchTerm
+                cls         := s"$controlCls w-56",
+                controlled(
+                  value <-- pageSignal.map(_.q.getOrElse("")),
+                  onInput.mapToValue --> { s => update(_.copy(q = Some(s).filter(_.nonEmpty))) }
+                )
               )
             )
           ),
-          child <-- picked.signal
-            .combineWith(searchTerm.signal)
-            .map((v, term) => board(filter(entries, term), v, released))
+          child <-- pageSignal.map(p =>
+            board(filter(entries, p.q.getOrElse("")), versionOf(p), released)
+          )
         )
       }
     )

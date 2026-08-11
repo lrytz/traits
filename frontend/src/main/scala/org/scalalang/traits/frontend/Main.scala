@@ -10,6 +10,7 @@ import org.scalalang.traits.frontend.pages.{
 }
 import org.scalalang.traits.frontend.Api.given
 import com.raquo.laminar.api.L.*
+import com.raquo.waypoint.SplitRender
 import org.scalajs.dom
 
 object Main:
@@ -22,18 +23,32 @@ object Main:
     div(
       cls := "min-h-screen bg-slate-50 text-slate-900",
       navbar(),
-      child <-- Routes.router.currentPageSignal.map(renderPage)
+      child <-- pageViews
     )
+
+  // SplitRender (not a plain map) so that changes within one page value — the board's URL query
+  // params — update the mounted page in place instead of rebuilding it, which would refetch and
+  // drop input focus on every keystroke.
+  private lazy val pageViews: Signal[HtmlElement] =
+    SplitRender[Page, HtmlElement](Routes.router.currentPageSignal)
+      .collectSignal[Page.Home](BoardPage(_))
+      .collectStatic(Page.Sips)(SipBoardPage())
+      .collectStatic(Page.Versions)(VersionsPage())
+      .collectStatic(Page.Login)(LoginPage())
+      .collectStatic(Page.NewEntry)(EditorPage(None))
+      .collect[Page.EntryView](p => EntryPage(p.slug))
+      .collect[Page.EditEntry](p => EditorPage(Some(p.slug)))
+      .signal
 
   private def navbar(): HtmlElement =
     div(
       cls := "bg-white border-b border-slate-200",
       div(
         cls := "max-w-7xl mx-auto px-4 h-14 flex items-center gap-6",
-        navLink(Page.Home, "Traits", "font-semibold text-slate-900 hover:text-slate-900"),
+        navLink(Page.Home(), "Traits", "font-semibold text-slate-900 hover:text-slate-900"),
         div(
           cls := "flex gap-4 text-sm",
-          navLink(Page.Home, "Pipeline"),
+          navLink(Page.Home(), "Pipeline"),
           navLink(Page.Sips, "SIPs"),
           navLink(Page.Versions, "Versions")
         ),
@@ -56,7 +71,7 @@ object Main:
             onClick --> { _ =>
               Api.logout().foreach { _ =>
                 Session.clear()
-                Routes.router.pushState(Page.Home)
+                Routes.router.pushState(Page.Home())
               }
             }
           )
@@ -75,12 +90,3 @@ object Main:
       onClick.preventDefault --> { _ => Routes.router.pushState(page) },
       text
     )
-
-  private def renderPage(page: Page): HtmlElement = page match
-    case Page.Home            => BoardPage()
-    case Page.Sips            => SipBoardPage()
-    case Page.Versions        => VersionsPage()
-    case Page.Login           => LoginPage()
-    case Page.NewEntry        => EditorPage(None)
-    case Page.EntryView(slug) => EntryPage(slug)
-    case Page.EditEntry(slug) => EditorPage(Some(slug))

@@ -182,7 +182,7 @@ object EditorPage:
     def remove(): Unit =
       if dom.window.confirm(s"Delete '${slug.now()}'? This cannot be undone.") then
         Api.deleteEntry(slug.now()).foreach {
-          case Right(_) => Routes.router.pushState(Page.Home)
+          case Right(_) => Routes.router.pushState(Page.Home())
           case Left(e)  => error.set(Some(e.message))
         }
 
@@ -396,9 +396,9 @@ object EditorPage:
           a(
             cls := Components.btnSecondary,
             "Cancel",
-            href := Routes.urlFor(slugOpt.map(Page.EntryView(_)).getOrElse(Page.Home)),
+            href := Routes.urlFor(slugOpt.map(Page.EntryView(_)).getOrElse(Page.Home())),
             onClick.preventDefault --> { _ =>
-              Routes.router.pushState(slugOpt.map(Page.EntryView(_)).getOrElse(Page.Home))
+              Routes.router.pushState(slugOpt.map(Page.EntryView(_)).getOrElse(Page.Home()))
             }
           ),
           if creating then emptyNode
@@ -412,7 +412,7 @@ object EditorPage:
       )
 
     Components.container(
-      Components.pageLink(Page.Home, "← All features", "text-sm"),
+      Components.pageLink(Page.Home(), "← All features", "text-sm"),
       div(
         cls := "mt-3 max-w-3xl",
         Components.pageTitle(if creating then "New entry" else s"Edit ${slugOpt.getOrElse("")}"),
