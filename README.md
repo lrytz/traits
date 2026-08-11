@@ -9,8 +9,9 @@ version, and how do I use it?*
 
 ## Status
 
-A working proof of concept, deployed and curated with real data. It validated
-the idea; the data model is now being rebuilt properly.
+A working proof of concept, deployed, holding sample data. It validated the
+idea; the model is now being rebuilt properly, and real curation starts after
+that.
 
 **[`PLAN.md`](PLAN.md) is the design document** — what the app tracks, the
 lifecycle, the data model, the views, and the plan of work. Read it first. The

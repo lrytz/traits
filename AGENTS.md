@@ -220,7 +220,8 @@ served by the backend as static files.
 
 ## Data
 
-The store holds real, curated data. It is never seeded by the app: deleting
+The store currently holds sample data — real curation begins with the rebuilt
+model ([`PLAN.md`](PLAN.md)). It is never seeded by the app: deleting
 `traits-data/traits.sqlite*` leaves an empty store, and the SQLite file is the
 artifact to back up and deploy. Entries are written through the editor UI or the
 HTTP API ([`docs/agent-curation.md`](docs/agent-curation.md)); the sources they

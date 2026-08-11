@@ -302,6 +302,32 @@ tracking bug fixes or performance work · replacing any GitHub workflow.
    starts over from scratch. This is the long pole and it is human work.
 5. **API.** Version registry and version-scoped queries, public.
 
+### Starting from the current code
+
+The prototype's storage, auth, editor UI and OpenAPI setup carry over as they
+are. Its data does not: it is sample data, and step 4 starts from an empty
+store, so none of this needs a format migration.
+
+**Keep** — `Sip`, `SipState`, `Recommendation` and `SipStage`, which already
+match the process specification exactly; `Section`, `Link`, `TimelineEntry`,
+`slug`, `title`, `tagline`, `tags`.
+
+**Replace** — `Availability(kind, sinceVersion, note)` becomes a list of
+versioned stages, and `AvailabilityKind` gains `PullRequest`, `Deprecated` and
+`Removed`. `Lane` goes: pipeline columns are availability stages plus `Idea`,
+not a mix of SIP and availability. `headline` and the `FeatureSummary`
+projection follow from those.
+
+**Drop** — the changelog, in all three places: `ChangelogEntry`,
+`GET /api/changelog`, and the changelog page and route.
+
+**Add** — `Version` and its table, `archived`, `statusIn`, the version picker
+and the SIP board.
+
+Naming: this document calls an entry an *entry*, while the code says `Topic` and
+the API path is `/api/topics`. Worth settling at step 1 — renaming is cheap
+before the data exists and awkward afterwards.
+
 [`docs/agent-curation.md`](docs/agent-curation.md) is the contract external
 agents follow, so it has to be updated alongside step 1 rather than after it.
 [`README.md`](README.md) and [`AGENTS.md`](AGENTS.md) also describe the current
