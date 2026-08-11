@@ -28,22 +28,30 @@ is in.
 
 ### What earns an entry
 
-Only significant changes belong here; everything else stays in the release
-notes. This line gets drawn repeatedly by different people, so it is written
-down — otherwise a reader can no longer take "not in Traits" to mean "not in
-Scala", which is most of the app's value.
+Traits tracks the **progress of features**. It is not a second copy of the
+release notes, which remain the complete record of what changed in each version.
+If a change's whole story is "it happened in 3.9", the release notes have
+already told it.
+
+The test: **would someone look this up by name, long after it shipped?**
 
 | Change | Bar |
 | --- | --- |
-| Has a SIP | always include |
-| Standard library | went through [SLC](https://github.com/scala/scala3/blob/main/docs/_docs/contributing/procedures/contributing-to-stdlib.md) ⇒ include |
-| Compiler change, no SIP | *would someone reasonably ask "can I use X in Scala 3.N?"* |
+| Has a SIP | always |
+| Standard library | [SLC](https://github.com/scala/scala3/blob/main/docs/_docs/contributing/procedures/contributing-to-stdlib.md) approval makes it eligible; the test still applies |
+| Anything else | the test |
 
-Include: capture checking, raising the minimum JDK, removing a deprecated
-method, anything that changes what compiles. Exclude: crash fixes, performance
-work, error-message wording, `-Y` debug flags. Borderline cases — a new warning
-that breaks `-Werror` builds, inference changes — are settled informally by the
-people curating.
+Include: capture checking, named tuples, `into` conversions, raising the minimum
+required JDK. Exclude: crash fixes, performance work, error-message wording,
+inference tweaks, `-Y` debug flags, and retiring an individual deprecated
+method. Sunsetting a whole mechanism is an entry; removing one method is a
+release note.
+
+The bar is deliberately high, and it is written down because different people
+apply it over years. Set too low, the database becomes a worse-maintained
+duplicate of the release notes; held high, "not in Traits" reliably means "not a
+tracked feature". Borderline calls are settled informally by the people
+curating.
 
 Compiler, library and research changes are **not** distinguished in the data.
 The only real difference is which stages they reach: library changes never get
