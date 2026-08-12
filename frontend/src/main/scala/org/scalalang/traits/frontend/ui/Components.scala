@@ -3,6 +3,7 @@ package org.scalalang.traits.frontend.ui
 import org.scalalang.traits.frontend.{Markdown, Page, Routes}
 import org.scalalang.traits.shared.{Availability, AvailabilityStage, BoardColumn}
 import com.raquo.laminar.api.L.*
+import org.scalajs.dom
 
 /** Three-state wrapper for an async load. */
 enum Loaded[+A]:
@@ -51,6 +52,82 @@ object Components:
     case BoardColumn.Stable       => "bg-emerald-100 text-emerald-700"
     case BoardColumn.Deprecated   => "bg-amber-100 text-amber-700"
     case BoardColumn.Removed      => "bg-rose-100 text-rose-700"
+
+  // ---- board views (the pipeline and the SIP board) ----
+
+  /** One stage of a board view: a pill in the count strip, and — when non-empty — a stacked
+    * full-width section of cards.
+    */
+  final case class BoardSection(
+      anchorId: String,
+      label: String,
+      colorCls: String,
+      cards: List[HtmlElement]
+  )
+
+  /** Count strip on top (empty stages dimmed, the others scroll to their section), then one section
+    * per non-empty stage, in the given order.
+    */
+  def board(sections: List[BoardSection]): HtmlElement =
+    div(
+      div(cls := "flex flex-wrap items-center gap-2 mb-6", sections.map(stripPill)),
+      sections.filter(_.cards.nonEmpty).map(boardSection)
+    )
+
+  private def stripPill(s: BoardSection): HtmlElement =
+    val base =
+      s"inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium px-2.5 py-1 rounded-full ${s.colorCls}"
+    if s.cards.isEmpty then
+      span(cls := s"$base opacity-40", s.label, span(cls := "font-normal", "0"))
+    else
+      button(
+        cls := s"$base hover:ring-2 hover:ring-blue-200 transition",
+        onClick --> { _ =>
+          Option(dom.document.getElementById(s.anchorId)).foreach(_.scrollIntoView())
+        },
+        s.label,
+        span(cls := "font-normal opacity-70", s.cards.size.toString)
+      )
+
+  private def boardSection(s: BoardSection): HtmlElement =
+    div(
+      idAttr := s.anchorId,
+      cls    := "mb-8",
+      div(
+        cls := "flex items-center gap-2 mb-3",
+        badge(s.label, s.colorCls),
+        span(cls := "text-xs text-slate-400", s.cards.size.toString)
+      ),
+      div(cls := "grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2", s.cards)
+    )
+
+  /** A compact board card: title, an optional mono corner tag (the SIP number), and a status line.
+    * The tagline doesn't fit — it becomes the hover tooltip.
+    */
+  def boardCard(
+      slug: String,
+      cardTitle: String,
+      tooltip: String,
+      corner: Option[String],
+      statusLine: Node
+  ): HtmlElement =
+    a(
+      href := Routes.urlFor(Page.EntryView(slug)),
+      onClick.preventDefault --> { _ => Routes.router.pushState(Page.EntryView(slug)) },
+      cls := "block bg-white rounded-lg border border-slate-200 px-3 py-2 hover:border-blue-300 hover:shadow-sm transition",
+      title := tooltip,
+      div(
+        cls := "flex items-baseline gap-2",
+        span(cls := "font-medium text-slate-900 text-sm truncate", cardTitle),
+        corner
+          .map(t => span(cls := "text-xs font-mono text-slate-400 ml-auto shrink-0", t))
+          .getOrElse(emptyNode)
+      ),
+      statusLine
+    )
+
+  def boardCardStatus(text: String): HtmlElement =
+    div(cls := "text-xs text-slate-400 mt-0.5", text)
 
   /** Short "where it stands" line for an availability entry: "Stable since 3.8", "Removed in 3.11
     * (backport)", "Pull request open".
