@@ -5,11 +5,12 @@ import org.scalalang.traits.frontend.{Api, Page, Routes}
 import org.scalalang.traits.frontend.Api.given
 import org.scalalang.traits.shared.*
 import com.raquo.laminar.api.L.*
+import org.scalajs.dom
 
-/** Home view: the pipeline board, one column per availability stage plus Idea, computed for a
-  * picked version (default: the latest released one). The picked version and the text filter are
-  * URL query params (`/?v=3.4&q=tuple`) — the URL is the source of truth, written with
-  * `replaceState` so typing doesn't pollute history.
+/** Home view: the pipeline, one stacked section per availability stage plus Idea, computed for a
+  * picked version (default: the latest released one), with a count strip on top. The picked version
+  * and the text filter are URL query params (`/?v=3.4&q=tuple`) — the URL is the source of truth,
+  * written with `replaceState` so typing doesn't pollute history.
   */
 object BoardPage:
 
@@ -104,6 +105,10 @@ object BoardPage:
           .contains(t)
       }
 
+  /** One full-width section per stage, stacked in pipeline order, with a count strip on top that
+    * shows the shape of the pipeline and jumps to a section. Empty stages appear only in the strip,
+    * dimmed.
+    */
   private def board(
       entries: List[EntrySummary],
       v: VersionId,
@@ -111,49 +116,86 @@ object BoardPage:
   ): HtmlElement =
     val cells =
       entries.flatMap(e => Board.cell(e.availability, e.archived, v, released).map(e -> _))
+    val byColumn = cells.groupBy(_._2.column)
     div(
-      cls := "flex flex-col sm:flex-row gap-4 sm:overflow-x-auto pb-4",
-      BoardColumn.all.map(c => column(c, cells.filter(_._2.column == c)))
+      div(
+        cls := "flex flex-wrap items-center gap-2 mb-6",
+        BoardColumn.all.map(c => stripPill(c, byColumn.get(c).fold(0)(_.size)))
+      ),
+      BoardColumn.all.flatMap(c => byColumn.get(c).map(items => section(c, items)))
     )
 
-  private def column(c: BoardColumn, items: List[(EntrySummary, BoardCell)]): HtmlElement =
+  private def anchor(c: BoardColumn): String = s"stage-$c"
+
+  private def stripPill(c: BoardColumn, count: Int): HtmlElement =
+    val base =
+      s"inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium px-2.5 py-1 rounded-full ${Components.columnClasses(c)}"
+    if count == 0 then
+      span(cls := s"$base opacity-40", BoardColumn.label(c), span(cls := "font-normal", "0"))
+    else
+      button(
+        cls := s"$base hover:ring-2 hover:ring-blue-200 transition",
+        onClick --> { _ =>
+          Option(dom.document.getElementById(anchor(c))).foreach(_.scrollIntoView())
+        },
+        BoardColumn.label(c),
+        span(cls := "font-normal opacity-70", count.toString)
+      )
+
+  /** Newest version first, so within Stable the recently landed features lead. */
+  private val cardOrder: Ordering[(EntrySummary, BoardCell)] =
+    Ordering
+      .by[(EntrySummary, BoardCell), Option[VersionId]](_._2.status.flatMap(_.version))
+      .reverse
+      .orElseBy(_._1.title)
+
+  private def section(c: BoardColumn, items: List[(EntrySummary, BoardCell)]): HtmlElement =
     div(
-      cls := "w-full sm:flex-1 sm:min-w-44",
+      idAttr := anchor(c),
+      cls    := "mb-8",
       div(
-        cls := "flex items-center gap-2 mb-2",
+        cls := "flex items-center gap-2 mb-3",
         Components.columnBadge(c),
         span(cls := "text-xs text-slate-400", items.size.toString)
       ),
       div(
-        cls := "space-y-2",
-        if items.isEmpty then p(cls := "text-xs text-slate-300 pb-1", "—")
-        else items.map(card)
+        cls := "grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2",
+        items.sorted(using cardOrder).map(card)
       )
     )
 
   private def card(item: (EntrySummary, BoardCell)): HtmlElement =
     val (e, cell) = item
-    val status: Node = cell.status match
+    val statusLine: Node = cell.status match
       case Some(a) if cell.upcoming =>
-        Components.badge(
-          a.version.fold("planned")(v => s"in ${v.render}"),
-          "bg-amber-100 text-amber-700"
+        div(
+          cls := "mt-1",
+          Components.badge(
+            a.version.fold("planned")(v => s"in ${v.render}"),
+            "bg-amber-100 text-amber-700"
+          )
         )
-      case Some(a) => span(cls := "text-xs text-slate-400", Components.statusText(a))
-      case None    => emptyNode
+      case Some(a) => div(cls := "text-xs text-slate-400 mt-0.5", Components.statusText(a))
+      case None =>
+        e.sip
+          .map(s => div(cls := "text-xs text-slate-400 mt-0.5", SipState.label(s.state)))
+          .getOrElse(emptyNode)
     a(
       href := Routes.urlFor(Page.EntryView(e.slug)),
       onClick.preventDefault --> { _ => Routes.router.pushState(Page.EntryView(e.slug)) },
-      cls := "block bg-white rounded-lg border border-slate-200 p-3 hover:border-blue-300 hover:shadow-sm transition",
-      div(cls := "font-medium text-slate-900 text-sm", e.title),
-      div(cls := "text-slate-500 text-xs mt-1 line-clamp-2", e.tagline),
+      cls := "block bg-white rounded-lg border border-slate-200 px-3 py-2 hover:border-blue-300 hover:shadow-sm transition",
+      title := e.tagline, // tooltip: the tagline no longer fits on the compact card
       div(
-        cls := "flex items-center gap-2 mt-2",
-        status,
+        cls := "flex items-baseline gap-2",
+        span(cls := "font-medium text-slate-900 text-sm truncate", e.title),
         e.sip
           .map(s =>
-            span(cls := "text-xs font-mono text-slate-400 ml-auto", s.number.getOrElse("SIP"))
+            span(
+              cls := "text-xs font-mono text-slate-400 ml-auto shrink-0",
+              s.number.getOrElse("SIP")
+            )
           )
           .getOrElse(emptyNode)
-      )
+      ),
+      statusLine
     )
