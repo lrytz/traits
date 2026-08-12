@@ -125,8 +125,13 @@ the `/docs` API browser are all served by the one container.
 ./backend/deploy/deploy.sh --infra  # also re-push Dockerfile / compose / entrypoint
 ```
 
-Each run re-snapshots your **local** DB as the seed, but the seed only
+Each run installs frontend deps with `npm ci`, so a fresh checkout deploys
+without any manual setup.
+
+Each run also re-snapshots your **local** DB as the seed, but the seed only
 initialises an *empty* volume — once the live site has data, redeploys keep it.
+On a fresh checkout there is no local DB (`traits-data/` is gitignored); the
+script then keeps the seed already on the server instead of failing.
 
 ## Pushing a fresh dataset (wiping live data)
 

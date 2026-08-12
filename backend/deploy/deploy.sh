@@ -6,9 +6,10 @@
 #           ./deploy.sh --infra   # also re-uploads Dockerfile + docker-compose.yml + entrypoint.sh
 #
 # Steps:
-#   1. Build the frontend (vite production build).
+#   1. Install frontend deps (npm ci) and build the frontend (vite production build).
 #   2. Build the backend fat jar (sbt-assembly).
 #   3. Snapshot the local SQLite DB into a single consistent file (the seed).
+#      With no local DB (fresh checkout), keep the seed already on the server.
 #   4. Capture git SHA + UTC build time.
 #   5. Pre-flight: bail if the server's infra files differ from the repo (unless --infra).
 #   6. scp jar + frontend-dist + seed.sqlite (and infra if --infra).
@@ -63,8 +64,9 @@ if [[ "$INFRA" != "--infra" ]]; then
   check_infra_in_sync
 fi
 
-echo ">>> Building frontend (npm run build)..."
-(cd frontend && npm run build --silent)
+echo ">>> Building frontend (npm ci && npm run build)..."
+# `npm ci` so a fresh checkout works and the build always matches the lockfile.
+(cd frontend && npm ci --silent && npm run build --silent)
 [[ -d frontend/dist ]] || { echo "error: frontend/dist not produced" >&2; exit 1; }
 
 echo ">>> Building fat jar (sbt clean backend/assembly)..."
@@ -86,19 +88,30 @@ elif [[ ${#JAR_CANDIDATES[@]} -gt 1 ]]; then
 fi
 JAR_PATH="${JAR_CANDIDATES[0]}"
 
-echo ">>> Snapshotting local DB into a single seed file..."
-SEED_DB="$(mktemp -t traits-seed.XXXXXX).sqlite"
 LOCAL_DB="${TRAITS_DB_PATH:-traits-data/traits.sqlite}"
-[[ -f "$LOCAL_DB" ]] || { echo "error: no local DB at $LOCAL_DB to seed from" >&2; exit 1; }
-# sqlite3 .backup() produces a consistent single-file copy even if the dev
-# backend holds the DB open in WAL mode.
-python3 - "$LOCAL_DB" "$SEED_DB" <<'PY'
+SEED_DB=""
+if [[ -f "$LOCAL_DB" ]]; then
+  echo ">>> Snapshotting local DB into a single seed file..."
+  SEED_DB="$(mktemp -t traits-seed.XXXXXX).sqlite"
+  # sqlite3 .backup() produces a consistent single-file copy even if the dev
+  # backend holds the DB open in WAL mode.
+  python3 - "$LOCAL_DB" "$SEED_DB" <<'PY'
 import sqlite3, sys
 src, dst = sqlite3.connect(sys.argv[1]), sqlite3.connect(sys.argv[2])
 with dst:
     src.backup(dst)
 dst.close(); src.close()
 PY
+elif rssh "test -f $REMOTE_DIR/seed.sqlite"; then
+  # A fresh checkout has no local DB (traits-data/ is gitignored and the app
+  # never seeds itself). The seed only matters for an EMPTY volume, so reuse
+  # the one already on the server rather than refusing to deploy.
+  echo ">>> No local DB at $LOCAL_DB — keeping the seed already on the server."
+else
+  echo "error: no local DB at $LOCAL_DB and no seed.sqlite on $HOST:$REMOTE_DIR" >&2
+  echo "       (the Dockerfile COPYs seed.sqlite, so the image build needs one)" >&2
+  exit 1
+fi
 
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
@@ -115,10 +128,12 @@ if [[ "$INFRA" == "--infra" ]]; then
   echo "    .env is NOT touched — manage it by hand on the server."
 fi
 
-echo ">>> Uploading jar ($(du -h "$JAR_PATH" | cut -f1)) + frontend-dist + seed.sqlite"
+echo ">>> Uploading jar ($(du -h "$JAR_PATH" | cut -f1)) + frontend-dist${SEED_DB:+ + seed.sqlite}"
 rscp "$JAR_PATH" "$HOST:$REMOTE_DIR/traits.jar"
-rscp "$SEED_DB" "$HOST:$REMOTE_DIR/seed.sqlite"
-rm -f "$SEED_DB"
+if [[ -n "$SEED_DB" ]]; then
+  rscp "$SEED_DB" "$HOST:$REMOTE_DIR/seed.sqlite"
+  rm -f "$SEED_DB"
+fi
 rssh "rm -rf $REMOTE_DIR/frontend-dist && mkdir -p $REMOTE_DIR/frontend-dist"
 tar -C frontend/dist -cf - . | rssh "tar -C $REMOTE_DIR/frontend-dist -xf -"
 
