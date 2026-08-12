@@ -54,7 +54,7 @@ next.
 ### 3. Write `.env` on the server
 
 ```sh
-ssh service@178.104.177.218
+ssh -J service@192.168.1.6 service@178.104.177.218
 cd /home/service/compose/traits
 cp /dev/stdin .env <<'EOF'
 # paste backend/deploy/.env.example and fill in the blanks:
@@ -134,14 +134,14 @@ If you want the live DB replaced with your current local one, drop the volume so
 the next deploy re-seeds:
 
 ```sh
-ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose down -v'
+ssh -J service@192.168.1.6 service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose down -v'
 ./backend/deploy/deploy.sh
 ```
 
 ## Logs & verifying
 
 ```sh
-ssh service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose logs -f'
+ssh -J service@192.168.1.6 service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose logs -f'
 curl https://traits.ddns.net/api/health     # entry count doubles as a readiness probe
 ```
 

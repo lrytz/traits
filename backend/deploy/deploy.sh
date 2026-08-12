@@ -22,7 +22,11 @@
 set -euo pipefail
 
 HOST="service@178.104.177.218"
+JUMP_HOST="service@192.168.1.6" # every ssh/scp proxies through this box
 REMOTE_DIR="/home/service/compose/traits"
+
+rssh() { ssh -J "$JUMP_HOST" "$HOST" "$@"; }
+rscp() { scp -J "$JUMP_HOST" "$@"; }
 
 INFRA="${1:-}"
 if [[ -n "$INFRA" && "$INFRA" != "--infra" ]]; then
@@ -39,7 +43,7 @@ cd "$ROOT_DIR"
 check_infra_in_sync() {
   local has_drift=0 file remote
   for file in Dockerfile docker-compose.yml entrypoint.sh; do
-    remote="$(ssh "$HOST" "cat $REMOTE_DIR/$file 2>/dev/null" || true)"
+    remote="$(rssh "cat $REMOTE_DIR/$file 2>/dev/null" || true)"
     if [[ "$remote" != "$(cat "$SCRIPT_DIR/$file")" ]]; then
       has_drift=1
       echo "--- infra drift: $file ---" >&2
@@ -103,27 +107,27 @@ fi
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 echo ">>> Ensuring remote dir exists: $HOST:$REMOTE_DIR"
-ssh "$HOST" "mkdir -p $REMOTE_DIR"
+rssh "mkdir -p $REMOTE_DIR"
 
 if [[ "$INFRA" == "--infra" ]]; then
   echo ">>> Uploading infra: Dockerfile + docker-compose.yml + entrypoint.sh"
-  scp "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR/docker-compose.yml" "$SCRIPT_DIR/entrypoint.sh" "$HOST:$REMOTE_DIR/"
+  rscp "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR/docker-compose.yml" "$SCRIPT_DIR/entrypoint.sh" "$HOST:$REMOTE_DIR/"
   echo "    .env is NOT touched — manage it by hand on the server."
 fi
 
 echo ">>> Uploading jar ($(du -h "$JAR_PATH" | cut -f1)) + frontend-dist + seed.sqlite"
-scp "$JAR_PATH" "$HOST:$REMOTE_DIR/traits.jar"
-scp "$SEED_DB" "$HOST:$REMOTE_DIR/seed.sqlite"
+rscp "$JAR_PATH" "$HOST:$REMOTE_DIR/traits.jar"
+rscp "$SEED_DB" "$HOST:$REMOTE_DIR/seed.sqlite"
 rm -f "$SEED_DB"
-ssh "$HOST" "rm -rf $REMOTE_DIR/frontend-dist && mkdir -p $REMOTE_DIR/frontend-dist"
-tar -C frontend/dist -cf - . | ssh "$HOST" "tar -C $REMOTE_DIR/frontend-dist -xf -"
+rssh "rm -rf $REMOTE_DIR/frontend-dist && mkdir -p $REMOTE_DIR/frontend-dist"
+tar -C frontend/dist -cf - . | rssh "tar -C $REMOTE_DIR/frontend-dist -xf -"
 
 echo ">>> Rebuilding image and restarting container on $HOST"
-ssh "$HOST" "cd $REMOTE_DIR && sudo env GIT_SHA='$GIT_SHA' BUILD_TIME='$BUILD_TIME' docker compose up -d --build"
+rssh "cd $REMOTE_DIR && sudo env GIT_SHA='$GIT_SHA' BUILD_TIME='$BUILD_TIME' docker compose up -d --build"
 
 echo ">>> Waiting for /api/health to report ok (via container)"
 for i in $(seq 1 40); do
-  if ssh "$HOST" "sudo docker exec traits-backend wget --quiet -O- http://localhost:8080/api/health" 2>/dev/null | grep -q '"status":"ok"'; then
+  if rssh "sudo docker exec traits-backend wget --quiet -O- http://localhost:8080/api/health" 2>/dev/null | grep -q '"status":"ok"'; then
     echo ">>> Healthy."
     break
   fi
@@ -132,6 +136,6 @@ for i in $(seq 1 40); do
 done
 
 echo ">>> Pruning stale images on $HOST"
-ssh "$HOST" "sudo docker image prune -af" > /dev/null
+rssh "sudo docker image prune -af" > /dev/null
 
 echo ">>> Deployed sha=$GIT_SHA at $BUILD_TIME"
