@@ -111,13 +111,9 @@ object BoardPage:
   ): HtmlElement =
     val cells =
       entries.flatMap(e => Board.cell(e.availability, e.archived, v, released).map(e -> _))
-    val columns = BoardColumn.all.filter {
-      case c @ (BoardColumn.Deprecated | BoardColumn.Removed) => cells.exists(_._2.column == c)
-      case _                                                  => true
-    }
     div(
       cls := "flex flex-col sm:flex-row gap-4 sm:overflow-x-auto pb-4",
-      columns.map(c => column(c, cells.filter(_._2.column == c)))
+      BoardColumn.all.map(c => column(c, cells.filter(_._2.column == c)))
     )
 
   private def column(c: BoardColumn, items: List[(EntrySummary, BoardCell)]): HtmlElement =

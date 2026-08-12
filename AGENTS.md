@@ -176,8 +176,13 @@ encoding, worked curl examples — is in `docs/agent-curation.md`.
 
 * **Routing: Waypoint.** Use the `staticRoute` helper (`Route.applyPF`) for
   static routes — `Route.static` with a `ClassTag` fails at runtime against
-  Scala 3 enum singletons. Add a `Page` case + a route to `allRoutes` +
-  a branch in `Main.renderPage`.
+  Scala 3 enum singletons. Add a `Page` case + a route to `allRoutes` + a
+  collector in `Main.pageViews`. Pages render through `SplitRender`, not a
+  plain map over `currentPageSignal`, so a page whose URL params change (the
+  board's `v`/`q` query params, see `Routes.homeRoute`) updates in place
+  instead of being rebuilt — rebuilding refetches and drops input focus. State
+  that should be shareable belongs in the URL: put it on the `Page` case and
+  write it back with `router.replaceState`.
 * **API: tapir-sttp-client.** Shared endpoints are body-only; cookies ride
   automatically (HttpOnly, browser-attached). Add a wrapper to `Api.scala`
   using `toRequestThrowDecodeFailures(Endpoints.x, baseUri = None)`.

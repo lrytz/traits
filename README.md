@@ -11,9 +11,9 @@ version, and how do I use it?*
 
 The proof of concept validated the idea; the app now implements the real model
 — the two-track lifecycle, versioned availability with backports, the version
-registry, and the per-version boards. The store starts empty: entering real
-data is the next step, and the design still awaits review by the teams
-involved.
+registry, and the per-version boards. The deployed instance holds test data
+for exercising the UI; entering real data is the next step, and the design
+still awaits review by the teams involved.
 
 **[`PLAN.md`](PLAN.md) is the design document** — what the app tracks, the
 lifecycle, the data model, the views, and the plan of work. Read it first.
