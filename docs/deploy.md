@@ -133,6 +133,40 @@ initialises an *empty* volume — once the live site has data, redeploys keep it
 On a fresh checkout there is no local DB (`traits-data/` is gitignored); the
 script then keeps the seed already on the server instead of failing.
 
+## Pulling the live dataset down
+
+To work locally against production data, copy the SQLite file out of the
+`traits-data` volume — **`traits.sqlite` plus its `-wal`**:
+
+```sh
+mkdir -p traits-data
+ssh -J service@192.168.1.6 service@178.104.177.218 \
+  "sudo docker exec traits-backend tar -C /app/data -cf - traits.sqlite traits.sqlite-wal" \
+  | tar -C traits-data -xf -
+
+# fold the WAL into the main file
+python3 -c "import sqlite3; c=sqlite3.connect('traits-data/traits.sqlite'); c.execute('PRAGMA wal_checkpoint(TRUNCATE)'); c.close()"
+```
+
+The `-wal` is not optional. The DB runs in WAL mode and the live
+`traits.sqlite` may not have been checkpointed for months, so copying it alone
+can hand you a long-stale dataset. Skip `-shm`; SQLite rebuilds it.
+
+The copy is only non-atomic if a write lands mid-`tar`. There is no `sqlite3` or
+`python3` on the server or in the JRE image to take a proper `.backup()`
+snapshot, so for a guaranteed-consistent copy stop the container first — a clean
+shutdown checkpoints the WAL:
+
+```sh
+ssh -J service@192.168.1.6 service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose stop traits-backend'
+# ... tar copy as above ...
+ssh -J service@192.168.1.6 service@178.104.177.218 'cd /home/service/compose/traits && sudo docker compose start traits-backend'
+```
+
+Note that once a local DB exists, the next deploy snapshots it as the seed
+again. That is harmless while the live volume has data — but see the next
+section before dropping the volume.
+
 ## Pushing a fresh dataset (wiping live data)
 
 If you want the live DB replaced with your current local one, drop the volume so
